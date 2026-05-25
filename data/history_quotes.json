@@ -1,0 +1,70 @@
+{
+  "_comment": "合成資料 / synthetic data — 歷史報價紀錄，給 agent 撈做定價參考",
+  "quotes": [
+    {
+      "id": "Q-2026-0142",
+      "date": "2026-04-18",
+      "product_id": "RW-PU-150-30",
+      "customer_id": "CUST-001",
+      "customer_name": "鴻碩電子",
+      "qty": 200,
+      "unit_price_twd": 2180,
+      "supplier_used": "SUP-002",
+      "lead_time_days": 11,
+      "outcome": "won",
+      "notes": "用永鎵代工，準時交。客戶滿意。"
+    },
+    {
+      "id": "Q-2026-0098",
+      "date": "2026-02-25",
+      "product_id": "RW-PU-150-30",
+      "customer_id": "CUST-001",
+      "customer_name": "鴻碩電子",
+      "qty": 180,
+      "unit_price_twd": 2150,
+      "supplier_used": "SUP-002",
+      "lead_time_days": 12,
+      "outcome": "won",
+      "notes": "永鎵，準時。"
+    },
+    {
+      "id": "Q-2025-0411",
+      "date": "2025-11-12",
+      "product_id": "RW-PU-150-30-EXT",
+      "customer_id": "CUST-001",
+      "customer_name": "鴻碩電子",
+      "qty": 120,
+      "unit_price_twd": 2380,
+      "supplier_used": "SUP-002",
+      "lead_time_days": 13,
+      "outcome": "won",
+      "notes": "加長版規格，永鎵。"
+    },
+    {
+      "id": "Q-2026-0067",
+      "date": "2026-01-30",
+      "product_id": "RW-PU-150-30",
+      "customer_id": "CUST-002",
+      "customer_name": "群岳機械",
+      "qty": 80,
+      "unit_price_twd": 1920,
+      "supplier_used": "SUP-003",
+      "lead_time_days": 15,
+      "outcome": "won",
+      "notes": "tier-B 客戶，用新鎏鍍。"
+    },
+    {
+      "id": "Q-2026-0073",
+      "date": "2026-02-08",
+      "product_id": "RW-PU-150-30",
+      "customer_id": "CUST-003",
+      "customer_name": "新興物流設備",
+      "qty": 500,
+      "unit_price_twd": 1680,
+      "supplier_used": "SUP-001",
+      "lead_time_days": 18,
+      "outcome": "won",
+      "notes": "tier-C 大量，用全鋼最便宜。"
+    }
+  ]
+}

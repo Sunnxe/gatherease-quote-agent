@@ -1,0 +1,61 @@
+{
+  "_comment": "合成資料 / synthetic data — 客戶名稱、聯絡方式皆為虛構",
+  "customers": [
+    {
+      "id": "CUST-001",
+      "name": "鴻碩電子",
+      "industry": "PCB / 電子組裝",
+      "contact": {
+        "name": "王經理（採購）",
+        "email": "buyer-hsuan-shou@test-gatherease.example",
+        "phone": "+886-3-3680-XXXX"
+      },
+      "profile": {
+        "annual_volume_estimate_twd": 8500000,
+        "typical_order_size_pcs": 200,
+        "tier": "tier-A",
+        "payment_terms": "T/T 30 days",
+        "quality_requirement": "high",
+        "delivery_strictness": "strict",
+        "notes": "PCB 廠，對抗靜電認證 + 交期準時度極敏感。曾因 1 天延期取消過 2024 一張單。"
+      },
+      "history_summary": {
+        "orders_in_past_12mo": 14,
+        "avg_unit_price_paid_twd": 2180,
+        "win_rate_pct": 78
+      }
+    },
+    {
+      "id": "CUST-002",
+      "name": "群岳機械",
+      "industry": "傳統機械加工",
+      "contact": {
+        "name": "陳廠長",
+        "email": "buyer-qun-yue@test-gatherease.example",
+        "phone": "+886-4-2515-XXXX"
+      },
+      "profile": {
+        "tier": "tier-B",
+        "quality_requirement": "medium",
+        "delivery_strictness": "moderate",
+        "notes": "傳統機械客戶，價格敏感、認證需求低。"
+      }
+    },
+    {
+      "id": "CUST-003",
+      "name": "新興物流設備",
+      "industry": "倉儲物流",
+      "contact": {
+        "name": "林副總",
+        "email": "buyer-xinxing@test-gatherease.example",
+        "phone": "+886-2-2789-XXXX"
+      },
+      "profile": {
+        "tier": "tier-C",
+        "quality_requirement": "low",
+        "delivery_strictness": "loose",
+        "notes": "物流推車輪需求，量大價低、品質要求一般。"
+      }
+    }
+  ]
+}

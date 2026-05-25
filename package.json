@@ -1,0 +1,27 @@
+{
+  "name": "gatherease-quote-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "桐聚 GatherEase × NVIDIA Agent Hackathon — AI 報價詢價 Agent + NemoClaw 治理層",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "demo": "node orchestrator.js demo",
+    "demo:secret": "node orchestrator.js demo --secret",
+    "real": "NODE_ENV=production node orchestrator.js real",
+    "test:read-drawing": "node skills/read_drawing/index.js",
+    "test:calc-cost": "node skills/calc_cost/index.js",
+    "test:send-rfq": "node skills/send_rfq/index.js"
+  },
+  "dependencies": {
+    "@line/bot-sdk": "^9.0.0",
+    "dotenv": "^16.4.5",
+    "imap-simple": "^5.1.0",
+    "mailparser": "^3.7.1",
+    "nodemailer": "^6.9.13",
+    "pdf-lib": "^1.17.1"
+  },
+  "devDependencies": {}
+}

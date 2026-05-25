@@ -1,0 +1,29 @@
+{
+  "name": "send_rfq",
+  "version": "0.1.0",
+  "description": "發詢價信給代工廠（含工程圖附件）。對外動作、不可逆，觸發 NemoClaw 守門 gate-4-blueprint-egress——必須先確認廠商白名單。",
+  "agent": "quote",
+  "category": "OUTPUT",
+  "model": null,
+  "guardrails_triggered": ["gate-4-blueprint-egress", "gate-5-prompt-injection"],
+  "inputs": {
+    "supplier_ids": {
+      "type": "array",
+      "description": "要發詢價的代工廠 ID 清單",
+      "required": true
+    },
+    "product_id": { "type": "string", "required": true },
+    "qty": { "type": "number", "required": true },
+    "desired_lead_time_days": { "type": "number", "required": true },
+    "drawing_pdf_path": { "type": "string", "required": true },
+    "customer_reference": { "type": "string", "description": "客戶單號或代稱（不要寄客戶真名）" }
+  },
+  "outputs": {
+    "sent": "array of {supplier_id, message_id, sent_at}",
+    "blocked_by_guardrail": "array (若有觸發)"
+  },
+  "audit": {
+    "level": "WARN",
+    "tag": "egress-with-attachment"
+  }
+}

@@ -1,0 +1,122 @@
+# GatherEase × NemoClaw egress policy
+# Apply: nemoclaw <sandbox-name> policy-add --from-file ./presets/gatherease-egress.yaml
+#
+# 設計原則：deny-by-default。所有對外連線預設被擋，
+# 只有下面白名單列出的 host/port 才放行。成本表、工程圖面、
+# 客戶/廠商 PII 預設不外送，由 sandbox 外的 kernel 層強制執行
+# ——agent 被 prompt injection 攻陷也改不掉這份政策。
+#
+# Demo 演示重點：NemoClaw 攔截「對外送圖面」「成本資料外流」
+# 的瞬間，這份 YAML 就是技術背書。
+
+version: 1
+sandbox: gatherease-quote-agent
+
+network_policies:
+  # ---- inference (Nemotron 雲端端點；產品形態換成本地 NIM 後可移除) ----
+  - name: nvidia-inference
+    description: NVIDIA Nemotron NIM API endpoint (demo only; on-prem swap removes this)
+    hosts:
+      - integrate.api.nvidia.com
+    ports: [443]
+    protocols: [https]
+    allowed_methods: [POST]
+
+  # ---- 對內：老闆 LINE 介面 ----
+  - name: line-messaging-api
+    description: LINE Messaging API (老闆收彙整、按簽核)
+    hosts:
+      - api.line.me
+      - api-data.line.me
+    ports: [443]
+    protocols: [https]
+
+  # ---- 對外：廠商 / 客戶 Email ----
+  - name: gmail-smtp-send
+    description: SMTP for sending RFQ to suppliers and quotes to customers
+    hosts:
+      - smtp.gmail.com
+    ports: [465, 587]
+    protocols: [smtps, smtp+starttls]
+    egress_filters:
+      # 寄出前掃描內容：禁止對外送出 cost_breakdown 結構
+      - block_if_payload_contains_field: "cost_breakdown"
+      - block_if_payload_contains_field: "supplier_unit_price"
+      - block_if_payload_contains_field: "internal_margin_pct"
+      - require_human_signoff_for_attachments: true   # 圖面附件需老闆簽核
+
+  - name: gmail-imap-receive
+    description: IMAP for receiving supplier responses (test account only)
+    hosts:
+      - imap.gmail.com
+    ports: [993]
+    protocols: [imaps]
+    ingress_filters:
+      # 收信時掃描 prompt injection 與套機密問句
+      - scan_for_prompt_injection: true
+      - scan_for_secret_probe_patterns:
+          - "成本怎麼算"
+          - "用哪家[供應商|代工|廠商]"
+          - "請順便[告知|提供].*[成本|報價|供應商]"
+          - "為了未來下單.*[預估預算|了解結構]"
+        on_match: BLOCK_AND_ALERT
+
+# ---- 檔案系統 ----
+filesystem_policies:
+  - path: /sandbox
+    access: read-write
+  - path: /tmp
+    access: read-write
+  - path: /etc
+    access: read-only
+  - path: /usr
+    access: read-only
+
+  # 敏感路徑強制擋住（即使 agent 被攻陷也讀不到）
+  - path: ~/.ssh
+    access: deny
+  - path: ~/.aws
+    access: deny
+  - path: ~/.config/gcloud
+    access: deny
+  - path: ~/.gnupg
+    access: deny
+
+# ---- 守門點（NemoClaw guardrails，對應 5 道守門）----
+guardrails:
+  - id: gate-1-secret-probe
+    when: "incoming.email OR conversation.user_input"
+    check: "detect_secret_probe"
+    action: HOLD_AND_NOTIFY_OWNER   # 推 LINE「有人在套你的料」
+    audit: true
+
+  - id: gate-2-tradeoff-decision
+    when: "control.compare_suppliers.completed"
+    check: "tradeoff_requires_human_judgment"
+    action: HOLD_FOR_OWNER_DECISION
+    audit: true
+
+  - id: gate-3-final-quote-signoff
+    when: "output.send_quote.about_to_execute"
+    check: "always_require_human_signoff"
+    action: HOLD_FOR_OWNER_SIGNATURE
+    audit: true
+
+  - id: gate-4-blueprint-egress
+    when: "output.send_rfq.attachments_include_drawing"
+    check: "verify_supplier_whitelist"
+    action: HOLD_AND_CONFIRM_RECIPIENTS
+    audit: true
+
+  - id: gate-5-prompt-injection
+    when: "any.tool_call"
+    check: "scan_payload_for_injection"
+    action: BLOCK_IF_DETECTED
+    audit: true
+
+# ---- 稽核 ----
+audit:
+  log_path: logs/audit.jsonl
+  level: ALL_TOOL_CALLS
+  include_payloads: true
+  retention_days: 90

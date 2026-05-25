@@ -1,0 +1,54 @@
+{
+  "_comment": "合成資料 / synthetic data — not real GatherEase or 達洲 internal info",
+  "products": [
+    {
+      "id": "RW-PU-150-30",
+      "name": "包膠鐵輪 150×30 (PU)",
+      "category": "rubber-coated-wheel",
+      "specs": {
+        "wheel_diameter_mm": 150,
+        "wheel_width_mm": 30,
+        "shaft_diameter_mm": 12,
+        "keyway": "5×5×20 端銑鍵槽",
+        "coating_material": "聚胺酯 PU 90A",
+        "coating_thickness_mm": 5,
+        "core_material": "S45C 中碳鋼",
+        "surface_treatment": "鎳鉻電鍍 + 抗靜電",
+        "load_kg": 250
+      },
+      "bom": [
+        {
+          "part": "鐵輪本體",
+          "sku": "STEEL-WHEEL-150-30",
+          "qty_per_unit": 1,
+          "source": "purchase",
+          "supplier_category": "steel-wheel-supplier",
+          "lead_time_days": 3
+        },
+        {
+          "part": "表面處理（電鍍+抗靜電）",
+          "sku": "SURFACE-TREATMENT",
+          "qty_per_unit": 1,
+          "source": "outsource",
+          "supplier_category": "surface-treatment-vendor",
+          "lead_time_days_avg": 6
+        },
+        {
+          "part": "PU 包膠（自製）",
+          "sku": "PU-COATING-90A",
+          "qty_per_unit": "0.18 kg",
+          "source": "in_house",
+          "process": "PU 注模 → 硫化 → 修邊 → QC",
+          "lead_time_days": 6,
+          "line": "包膠線 A"
+        }
+      ],
+      "quality_requirements": {
+        "tolerance_mm": 0.05,
+        "concentricity_mm": 0.03,
+        "anti_static": "required (PCB / 電子業)",
+        "certifications_required": ["RoHS"]
+      }
+    }
+  ]
+}

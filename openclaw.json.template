@@ -1,0 +1,125 @@
+{
+  "_comment_1": "OpenClaw 設定範本 — copy 到 ~/.openclaw/openclaw.json 並填入真實 key",
+  "_comment_2": "本地檔案路徑：~/.openclaw/openclaw.json （絕對不要 commit 真實 key 版）",
+
+  "env": {
+    "NVIDIA_API_KEY": "${NVIDIA_API_KEY}",
+    "LINE_CHANNEL_ACCESS_TOKEN": "${LINE_CHANNEL_ACCESS_TOKEN}",
+    "LINE_CHANNEL_SECRET": "${LINE_CHANNEL_SECRET}",
+    "GMAIL_USER": "${GMAIL_USER}",
+    "GMAIL_APP_PASSWORD": "${GMAIL_APP_PASSWORD}"
+  },
+
+  "gateway": {
+    "port": 18789,
+    "bind": "loopback"
+  },
+
+  "daemon": {
+    "install": true,
+    "runtime": "node",
+    "heartbeat_seconds": 60
+  },
+
+  "models": {
+    "providers": {
+      "nvidia": {
+        "baseUrl": "https://integrate.api.nvidia.com/v1",
+        "api": "openai-completions",
+        "timeoutSeconds": 300,
+        "_note": "NVIDIA 託管自訂模型首次回應較慢，timeoutSeconds 必須 >= 300，否則會 timeout 報錯"
+      }
+    },
+    "aliases": {
+      "nano": "nvidia/nvidia/nemotron-3-nano-30b",
+      "super": "nvidia/nvidia/nemotron-3-super-120b-a12b"
+    }
+  },
+
+  "agents": {
+    "defaults": {
+      "model": { "primary": "super" }
+    },
+    "list": [
+      {
+        "id": "engineer",
+        "name": "工程判讀 Engineer",
+        "description": "讀客戶工程圖 PDF，像工程師一樣判斷產品/規格/工序/BOM，並定義採購·代工·自製分工",
+        "workspace": "~/.openclaw/ws-engineer",
+        "model": { "primary": "super" },
+        "tools": {
+          "allow": ["read", "exec"],
+          "deny": ["browser", "cron", "write_outside_workspace"]
+        },
+        "skills": ["read_drawing"]
+      },
+      {
+        "id": "planner",
+        "name": "生管 Planner",
+        "description": "查自家產線排程，評估訂單的最早可達交期；補上『我端』的交期，讓能否準時交貨完整",
+        "workspace": "~/.openclaw/ws-planner",
+        "model": { "primary": "super" },
+        "tools": {
+          "allow": ["read", "exec"],
+          "deny": ["browser", "cron"]
+        },
+        "skills": ["check_schedule"]
+      },
+      {
+        "id": "quote",
+        "name": "報價主 Quote",
+        "description": "接 BOM 做成本估算、查料價、發詢價、彙整比價、產生報價、加密寄出",
+        "workspace": "~/.openclaw/ws-quote",
+        "model": { "primary": "super", "fallback_for_light_tasks": "nano" },
+        "tools": {
+          "allow": ["read", "write", "exec"]
+        },
+        "skills": [
+          "get_purchase_price",
+          "get_material_price",
+          "get_history_quote",
+          "calc_cost",
+          "compare_suppliers",
+          "send_rfq",
+          "detect_secret_probe",
+          "encrypt_quote",
+          "send_quote",
+          "archive_quote"
+        ]
+      }
+    ]
+  },
+
+  "nemoclaw": {
+    "sandbox_name": "gatherease-quote-agent",
+    "policy_files": [
+      "./presets/gatherease-egress.yaml"
+    ],
+    "audit_log": "./logs/audit.jsonl"
+  },
+
+  "channels": {
+    "line": {
+      "channel_access_token": "${LINE_CHANNEL_ACCESS_TOKEN}",
+      "channel_secret": "${LINE_CHANNEL_SECRET}",
+      "webhook_path": "/webhook/line",
+      "auto_reply_disabled": true,
+      "_note": "LINE Developer Console 必須關閉『自動回覆訊息』，否則 LINE 會先吃掉訊息 agent 收不到"
+    },
+    "gmail": {
+      "smtp": {
+        "user": "${GMAIL_USER}",
+        "password": "${GMAIL_APP_PASSWORD}",
+        "host": "smtp.gmail.com",
+        "port": 587
+      },
+      "imap": {
+        "user": "${GMAIL_IMAP_USER}",
+        "password": "${GMAIL_IMAP_PASSWORD}",
+        "host": "imap.gmail.com",
+        "port": 993,
+        "_note": "務必用專門測試帳號，不要用主帳號（agent 自動收發可能被 Google 標記）"
+      }
+    }
+  }
+}

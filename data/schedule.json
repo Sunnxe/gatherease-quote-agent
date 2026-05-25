@@ -1,0 +1,36 @@
+{
+  "_comment": "合成資料 / synthetic data — 自家產線排程，給 planner agent 算可達交期",
+  "as_of_date": "2026-05-25",
+  "lines": [
+    {
+      "line_id": "PU-COATING-A",
+      "line_name": "包膠線 A",
+      "capacity_units_per_day": 40,
+      "current_backlog_units": 240,
+      "earliest_start_date": "2026-05-31",
+      "scheduled_orders": [
+        {"order_id": "WO-2026-0512", "customer": "鴻碩電子", "qty": 200, "start": "2026-05-25", "end": "2026-05-30"},
+        {"order_id": "WO-2026-0515", "customer": "群岳機械", "qty": 80, "start": "2026-05-31", "end": "2026-06-01"},
+        {"order_id": "WO-2026-0518", "customer": "新興物流", "qty": 160, "start": "2026-06-02", "end": "2026-06-05"}
+      ]
+    }
+  ],
+  "process_lead_times": {
+    "_comment": "從接單到自家端完成的天數分解",
+    "steel_wheel_purchase_days": 3,
+    "outsource_surface_treatment_days": "取決於選哪家代工（4–9 天）",
+    "in_house_pu_coating_days": 6,
+    "qc_and_pack_days": 1
+  },
+  "_example_calc": {
+    "scenario": "200 支 RW-PU-150-30、鴻碩電子要 10 天交",
+    "earliest_start": "2026-05-31",
+    "purchase_steel_wheel": "3 天 (5/31 → 6/3)",
+    "surface_treatment_yongjia": "4 天 (6/3 → 6/7)",
+    "pu_coating_in_house": "6 天 (6/7 → 6/13)",
+    "qc_pack": "1 天 (6/13 → 6/14)",
+    "total_days_from_today": 20,
+    "vs_customer_deadline_days": 10,
+    "gap_days": "10 天差距，必須用永鎵（4 天代工）才有機會在不重排產線下趕近、否則需協商延期"
+  }
+}

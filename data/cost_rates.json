@@ -1,0 +1,39 @@
+{
+  "_comment": "合成資料 / synthetic data — 成本費率表，數字為示意",
+  "currency": "TWD",
+  "as_of_date": "2026-05-24",
+  "rates": {
+    "steel_wheel_purchase": {
+      "_label": "鐵輪本體外購單價",
+      "sku": "STEEL-WHEEL-150-30",
+      "price_per_unit": 650,
+      "source": "supplier:SUP-IRON-001"
+    },
+    "pu_material": {
+      "_label": "PU 膠料即時行情",
+      "price_per_kg": 320,
+      "consumption_per_unit_kg": 0.18,
+      "cost_per_unit": 57.6,
+      "source": "market-feed:pu-tw",
+      "volatility": "±8% monthly",
+      "last_updated": "2026-05-24T08:00:00+08:00"
+    },
+    "labor_pu_coating": {
+      "_label": "PU 包膠自製工時",
+      "process_minutes_per_unit": 14,
+      "hourly_rate": 1200,
+      "cost_per_unit": 280,
+      "includes": "注模 + 硫化 + 修邊 + QC"
+    },
+    "overhead_rate_pct": {
+      "_label": "管銷費用率",
+      "value": 12
+    },
+    "markup_target_pct": {
+      "_label": "毛利目標",
+      "tier_A": 32,
+      "tier_B": 24,
+      "tier_C": 18
+    }
+  }
+}

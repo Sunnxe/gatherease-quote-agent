@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280, initial-scale=1.0">
+<title>資料留在工廠 · 模型來工廠</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@700&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{--nv:#76b900;--nv2:#a4e80a;--ink:#e8f0e0;--muted:#8a978a;--bg:#0a0e0a;--red:#ff3b3b;--panel:#121a12;--border:#23311f}
+  html,body{width:1280px;height:720px;overflow:hidden;background:var(--bg);font-family:'Noto Sans TC',sans-serif;color:var(--ink)}
+  body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 60% 50% at 15% 0%,rgba(118,185,0,.1),transparent 60%),radial-gradient(ellipse 50% 40% at 95% 100%,rgba(118,185,0,.06),transparent 60%);pointer-events:none}
+  .slide{position:relative;width:1280px;height:720px;padding:52px 64px;display:flex;flex-direction:column;z-index:1}
+  .kicker{font-size:16px;color:var(--nv);font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px}
+  h1{font-size:46px;font-weight:900;line-height:1.15;margin-bottom:6px}
+  h1 .g{color:var(--nv)}
+  .sub{font-size:18px;color:var(--muted);margin-bottom:30px}
+  .q{display:inline-block;background:rgba(255,59,59,.1);border:1px solid rgba(255,59,59,.3);color:#ff8a8a;font-size:15px;font-weight:500;padding:9px 16px;border-radius:10px;margin-bottom:28px}
+  .q b{color:#ffb3b3}
+
+  .diagram{flex:1;display:flex;align-items:center;justify-content:center;gap:26px}
+  .box{background:var(--panel);border:1.5px solid var(--border);border-radius:18px;padding:24px 22px;width:330px;position:relative}
+  .box.factory{border-color:var(--nv);box-shadow:0 0 40px rgba(118,185,0,.18)}
+  .box .bt{font-size:13px;font-weight:700;letter-spacing:1px;color:var(--nv);text-transform:uppercase;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+  .box .row{display:flex;align-items:center;gap:10px;font-size:15px;padding:7px 0;color:var(--ink)}
+  .box .row .ic{width:22px;text-align:center;flex-shrink:0}
+  .box .note{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.5;border-top:1px solid var(--border);padding-top:10px}
+
+  .cloud{width:300px;opacity:.62}
+  .cloud .bt{color:var(--muted)}
+  .barrier{display:flex;flex-direction:column;align-items:center;gap:8px;flex-shrink:0}
+  .barrier .wall{width:5px;height:200px;background:linear-gradient(var(--nv),var(--nv2));border-radius:4px;box-shadow:0 0 18px rgba(118,185,0,.5);position:relative}
+  .barrier .lock{font-size:26px}
+  .barrier .blk{font-size:11px;font-weight:700;color:var(--red);writing-mode:vertical-rl;letter-spacing:2px}
+  .arrow-x{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:30px;color:var(--red)}
+
+  .foot{display:flex;align-items:center;justify-content:space-between;margin-top:24px;padding-top:20px;border-top:1px solid var(--border)}
+  .punch{font-size:24px;font-weight:900}
+  .punch .g{color:var(--nv)}
+  .why{font-size:13px;color:var(--muted);max-width:560px;text-align:right;line-height:1.5}
+  .tag{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--nv);background:rgba(118,185,0,.08);border:1px solid var(--border);padding:4px 10px;border-radius:6px}
+</style>
+</head>
+<body>
+<div class="slide">
+  <div class="kicker">資料主權 · DATA STAYS HOME</div>
+  <h1>不是資料去雲端，是<span class="g">模型來工廠</span></h1>
+  <div class="sub">老闆最怕的問題，正是這套架構的設計目的</div>
+
+  <div class="q">老闆問：「我的成本表、圖面，會不會被送上雲端、被拿去訓練？」　<b>→ 不會。</b></div>
+
+  <div class="diagram">
+    <!-- factory -->
+    <div class="box factory">
+      <div class="bt">🏭 工廠本地（on-prem）</div>
+      <div class="row"><span class="ic">🧠</span>Nemotron · NVIDIA NIM 自架</div>
+      <div class="row"><span class="ic">🤖</span>OpenClaw daemon 常駐</div>
+      <div class="row"><span class="ic">📑</span>成本表 · BOM · 工程圖面</div>
+      <div class="row"><span class="ic">🛡️</span>NemoClaw egress policy</div>
+      <div class="note">推理、資料、治理全部在本地。NemoClaw 的 egress policy 直接禁止成本／圖面對外連線。</div>
+    </div>
+
+    <!-- barrier -->
+    <div class="barrier">
+      <div class="lock">🔒</div>
+      <div class="wall"><span class="arrow-x">✕</span></div>
+      <div class="blk">BLOCKED</div>
+    </div>
+
+    <!-- cloud -->
+    <div class="box cloud">
+      <div class="bt">☁️ 外部雲端</div>
+      <div class="row"><span class="ic">🚫</span>成本資料：不外送</div>
+      <div class="row"><span class="ic">🚫</span>工程圖面：不外送</div>
+      <div class="row"><span class="ic">🚫</span>不被拿去訓練模型</div>
+      <div class="note">egress policy 在沙盒外、kernel 層強制 ——<br>agent 被攻陷也改不掉自己的規則。</div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div class="punch">資料留工廠，<span class="g">人類最終把關</span></div>
+    <div class="why">這正是 NVIDIA 做 NemoClaw 的理由——讓最怕資料外洩的傳統產業，也敢用 AI。<br><span class="tag">流程交給 AI，決策留給老闆</span></div>
+  </div>
+</div>
+</body>
+</html>

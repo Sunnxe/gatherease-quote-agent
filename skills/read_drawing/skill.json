@@ -1,0 +1,32 @@
+{
+  "name": "read_drawing",
+  "version": "0.1.0",
+  "description": "讀客戶工程圖 PDF，像工程師一樣判斷產品/規格/工序/BOM，並定『採購·代工·自製』分工",
+  "agent": "engineer",
+  "category": "INPUT",
+  "model": "super",
+  "inputs": {
+    "drawing_pdf_path": {
+      "type": "string",
+      "description": "客戶工程圖 PDF 在本機的絕對路徑或 file:// URL",
+      "required": true
+    },
+    "customer_id": {
+      "type": "string",
+      "description": "客戶 ID，用來對應客戶慣用規格 / tier",
+      "required": false
+    }
+  },
+  "outputs": {
+    "product_id": "string",
+    "specs": "object",
+    "bom": "array",
+    "quality_requirements": "object",
+    "confidence": "number 0–1",
+    "notes": "string"
+  },
+  "audit": {
+    "level": "INFO",
+    "include_drawing_hash": true
+  }
+}

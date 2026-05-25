@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>桐聚 · AI 報價詢價 Agent · NemoClaw Demo</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+
+  :root{
+    --nv-green:#76b900;
+    --nv-green-bright:#a4e80a;
+    --bg:#0a0e0a;
+    --panel:#111811;
+    --panel-2:#0d130d;
+    --line-bg:#7494c0;
+    --line-chat:#8ba6cb;
+    --ink:#e8f0e0;
+    --muted:#7f8c7f;
+    --allow:#76b900;
+    --block:#ff3b3b;
+    --hold:#ffb020;
+    --border:#1e2a1e;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    font-family:'Noto Sans TC',sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    min-height:100vh;
+    overflow-x:hidden;
+  }
+  /* atmospheric bg */
+  body::before{
+    content:'';position:fixed;inset:0;z-index:0;
+    background:
+      radial-gradient(ellipse 60% 50% at 20% 0%, rgba(118,185,0,0.08), transparent 60%),
+      radial-gradient(ellipse 50% 40% at 90% 100%, rgba(118,185,0,0.05), transparent 60%);
+    pointer-events:none;
+  }
+
+  .wrap{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:20px 16px 60px}
+
+  header.top{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:10px 4px 18px;flex-wrap:wrap;gap:12px;
+  }
+  .brand{display:flex;align-items:center;gap:12px}
+  .brand .logo{
+    width:38px;height:38px;border-radius:9px;
+    background:var(--nv-green);display:grid;place-items:center;
+    font-weight:900;color:#0a0e0a;font-size:20px;
+    box-shadow:0 0 24px rgba(118,185,0,0.5);
+  }
+  .brand h1{font-size:17px;font-weight:700;letter-spacing:.3px}
+  .brand .sub{font-size:11px;color:var(--muted);font-weight:500;margin-top:2px}
+  .slogan{
+    font-size:13px;color:var(--nv-green-bright);font-weight:700;
+    border:1px solid var(--border);padding:8px 14px;border-radius:999px;
+    background:rgba(118,185,0,0.06);
+  }
+
+  .stage{
+    display:grid;grid-template-columns:380px 1fr;gap:18px;align-items:start;
+  }
+  @media(max-width:880px){.stage{grid-template-columns:1fr}}
+
+  /* ---------- PHONE / LINE ---------- */
+  .phone{
+    background:#000;border-radius:30px;padding:10px;
+    box-shadow:0 30px 80px rgba(0,0,0,0.6), 0 0 0 1px #222;
+    position:sticky;top:16px;
+  }
+  .phone-screen{
+    background:var(--line-bg);border-radius:22px;overflow:hidden;
+    height:640px;display:flex;flex-direction:column;position:relative;
+  }
+  /* supplier email overlay */
+  .supplier-view{
+    position:absolute;inset:0;background:#f6f8fb;z-index:20;
+    display:flex;flex-direction:column;
+    transform:translateX(100%);transition:transform .45s cubic-bezier(.4,0,.2,1);
+    border-radius:22px;overflow:hidden;
+  }
+  .supplier-view.show{transform:translateX(0)}
+  .sv-head{background:#c5221f;color:#fff;padding:13px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+  .sv-head #svBack{font-size:22px;cursor:default;opacity:.9}
+  .sv-title{font-size:14px;font-weight:700}
+  .sv-sub{font-size:10px;color:#ffd9d6}
+  .sv-badge{font-size:10px;background:rgba(255,255,255,.2);padding:3px 8px;border-radius:6px;font-weight:700}
+  .sv-body{flex:1;overflow-y:auto;padding:12px 11px;display:flex;flex-direction:column;gap:10px}
+  .sv-body::-webkit-scrollbar{width:0}
+  .email{background:#fff;border:1px solid #e2e6ee;border-radius:12px;padding:11px 12px;font-size:12px;color:#1a1a1a;animation:pop .35s ease}
+  .email .efrom{font-weight:700;font-size:12px;display:flex;justify-content:space-between;align-items:center}
+  .email .efrom .etime{font-size:9px;color:#999;font-weight:400}
+  .email .esub{font-size:11px;color:#555;margin:3px 0 7px}
+  .email .ebody{font-size:11.5px;line-height:1.5;color:#333}
+  .email .attach{margin-top:8px;display:inline-flex;align-items:center;gap:5px;background:#eef3fb;border:1px solid #d3e0f5;border-radius:7px;padding:5px 9px;font-size:10.5px;color:#2c5; color:#1a5fb4;font-weight:600}
+  .email.reply{border-left:3px solid var(--nv-green)}
+  .email.reply .efrom{color:#3a6a00}
+  .email.danger{border-left:3px solid var(--block);background:#fff5f5}
+  .email.danger .efrom{color:#b00}
+  .email .inject{margin-top:6px;background:#ffe3e3;border:1px dashed var(--block);border-radius:6px;padding:6px 8px;font-size:10.5px;color:#8a0000}
+  .quote-line{display:flex;justify-content:space-between;padding:2px 0;font-size:11px;border-bottom:1px dashed #eee}
+  .quote-line b{font-variant-numeric:tabular-nums}
+  .fastfwd{align-self:center;background:#2b303b;color:#ffd24a;font-size:11px;font-weight:700;padding:6px 14px;border-radius:999px;margin:4px 0;animation:pop .3s ease}
+
+  /* ---------- ENGINEER DRAWING SCENE ---------- */
+  .scene{position:absolute;inset:0;z-index:15;display:flex;flex-direction:column;
+    transform:translateX(100%);transition:transform .45s cubic-bezier(.4,0,.2,1);
+    border-radius:22px;overflow:hidden;}
+  .scene.show{transform:translateX(0)}
+  .eng-scene{background:#0e1410}
+  .eng-head{background:#15301f;color:var(--nv-green-bright);padding:12px 14px;font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;flex-shrink:0}
+  .eng-head .badge{margin-left:auto;font-size:9px;background:rgba(118,185,0,.15);padding:3px 8px;border-radius:6px;font-family:'JetBrains Mono',monospace}
+  .eng-body{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+  .eng-body::-webkit-scrollbar{width:0}
+  .drawing{background:#fff;border-radius:10px;padding:10px;position:relative;min-height:150px}
+  .drawing svg{width:100%;height:auto;display:block}
+  .scan{position:absolute;left:0;right:0;height:3px;background:linear-gradient(90deg,transparent,var(--nv-green),transparent);box-shadow:0 0 12px var(--nv-green);animation:scanmove 2s ease-in-out infinite;opacity:0}
+  .drawing.scanning .scan{opacity:1}
+  @keyframes scanmove{0%{top:6%}50%{top:92%}100%{top:6%}}
+  .eng-status{font-size:11.5px;color:var(--nv-green-bright);font-family:'JetBrains Mono',monospace;display:flex;align-items:center;gap:7px}
+  .eng-status .sp{width:11px;height:11px;border:2px solid var(--nv-green);border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite}
+  .eng-read{background:#121a12;border:1px solid var(--border);border-radius:10px;padding:10px 11px;font-size:11.5px;color:var(--ink);animation:pop .35s ease}
+  .eng-read .rt{font-weight:700;color:var(--nv-green-bright);margin-bottom:6px;font-size:11px}
+  .eng-read table{width:100%;border-collapse:collapse;font-size:11px}
+  .eng-read td{padding:3px 0;color:#c4d4bc;vertical-align:top}
+  .eng-read td:first-child{color:var(--muted);width:34%}
+  .eng-read .split{margin-top:6px;border-top:1px dashed var(--border);padding-top:6px;line-height:1.7}
+  .eng-read .split b.buy{color:#7fb0ff} .eng-read .split b.out{color:#ff9a6a} .eng-read .split b.self{color:var(--nv-green-bright)}
+
+  /* ---------- SYSTEM ARCHIVE SCENE ---------- */
+  .sys-scene{background:#0b120b}
+  .sys-head{background:#15301f;color:var(--nv-green-bright);padding:12px 14px;font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;flex-shrink:0}
+  .sys-head .badge{margin-left:auto;font-size:9px;background:rgba(118,185,0,.15);padding:3px 8px;border-radius:6px;font-family:'JetBrains Mono',monospace}
+  .sys-body{flex:1;overflow-y:auto;padding:14px 12px;display:flex;flex-direction:column;gap:10px}
+  .sys-row{background:#121a12;border:1px solid var(--border);border-radius:9px;padding:10px 12px;font-size:12px;display:flex;justify-content:space-between;align-items:center;animation:pop .35s ease}
+  .sys-row .k{color:var(--muted)} .sys-row .v{color:var(--ink);font-family:'JetBrains Mono',monospace;font-size:11px}
+  .sys-saved{align-self:center;margin-top:6px;color:var(--nv-green-bright);font-size:13px;font-weight:700;display:flex;align-items:center;gap:7px;animation:pop .4s ease}
+  .scene-label{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:30;background:rgba(0,0,0,.65);color:#fff;font-size:10px;padding:4px 12px;border-radius:999px;font-weight:600;pointer-events:none;opacity:0;transition:.3s}
+  .scene-label.show{opacity:1}
+  .line-head{
+    background:#2b303b;color:#fff;padding:13px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0;
+  }
+  .line-head .av{width:34px;height:34px;border-radius:50%;background:var(--nv-green);display:grid;place-items:center;font-weight:900;color:#0a0e0a;font-size:15px}
+  .line-head .nm{font-size:14px;font-weight:700}
+  .line-head .st{font-size:10px;color:#9fb4d0}
+  .line-head .dot{width:7px;height:7px;border-radius:50%;background:var(--nv-green);box-shadow:0 0 8px var(--nv-green);display:inline-block;margin-right:4px}
+
+  .chat{flex:1;overflow-y:auto;padding:14px 12px;display:flex;flex-direction:column;gap:10px}
+  .chat::-webkit-scrollbar{width:0}
+
+  .msg{max-width:82%;font-size:13px;line-height:1.5;animation:pop .3s ease}
+  @keyframes pop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .msg.bot{align-self:flex-start}
+  .msg.me{align-self:flex-end}
+  .bubble{padding:9px 12px;border-radius:16px;position:relative;word-break:break-word}
+  .bot .bubble{background:#fff;color:#1a1a1a;border-top-left-radius:4px}
+  .me .bubble{background:var(--nv-green);color:#0a1400;border-top-right-radius:4px;font-weight:500}
+  .sender{font-size:10px;color:#3a4250;margin:0 0 3px 4px}
+  .time{font-size:9px;color:rgba(255,255,255,0.6);margin-top:3px}
+  .me .time{text-align:right}
+
+  /* system/order card in chat */
+  .card{
+    background:#fff;border-radius:14px;padding:11px 12px;font-size:12px;color:#1a1a1a;
+    border-left:3px solid var(--nv-green);
+  }
+  .card .ttl{font-weight:700;font-size:12px;margin-bottom:6px;display:flex;align-items:center;gap:5px}
+  .card table{width:100%;border-collapse:collapse;font-size:11px}
+  .card td{padding:2px 0;color:#444}
+  .card td:last-child{text-align:right;font-variant-numeric:tabular-nums;color:#111;font-weight:500}
+  .card .tot{border-top:1px dashed #ccc;margin-top:5px;padding-top:5px;font-weight:700;color:#000}
+
+  /* guardrail confirm card (the killer moment) */
+  .gate{
+    background:#fff8e6;border:1.5px solid var(--hold);border-radius:14px;padding:12px;font-size:12px;color:#5a4500;
+    box-shadow:0 6px 20px rgba(255,176,32,0.25);
+  }
+  .gate.block{background:#fff0f0;border-color:var(--block);color:#7a1010;box-shadow:0 6px 20px rgba(255,59,59,0.25)}
+  .gate .gh{font-weight:800;font-size:12.5px;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+  .gate .gd{line-height:1.55;margin-bottom:9px}
+  .gate .gd b{color:#000}
+  .gate .btns{display:flex;gap:7px;flex-wrap:wrap}
+  .gate button{
+    flex:1;min-width:88px;border:none;padding:9px 8px;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;
+    font-family:inherit;transition:.15s;
+  }
+  .gate .ok{background:var(--nv-green);color:#0a1400}
+  .gate .ok:hover{background:var(--nv-green-bright)}
+  .gate .no{background:#eee;color:#666}
+  .gate .no:hover{background:#ddd}
+  .gate.done{opacity:.6;filter:saturate(.5)}
+  .gate.done button{pointer-events:none}
+
+  .price-input{display:flex;gap:6px;margin-top:8px}
+  .price-input input{flex:1;border:1.5px solid var(--nv-green);border-radius:9px;padding:8px;font-size:13px;font-family:inherit;font-weight:700;color:#111}
+  .price-input input:focus{outline:none;border-color:var(--nv-green-bright)}
+
+  .typing{align-self:flex-start;background:#fff;padding:11px 14px;border-radius:16px;border-top-left-radius:4px;display:flex;gap:4px}
+  .typing span{width:6px;height:6px;border-radius:50%;background:#aab;animation:blink 1.2s infinite}
+  .typing span:nth-child(2){animation-delay:.2s}
+  .typing span:nth-child(3){animation-delay:.4s}
+  @keyframes blink{0%,60%,100%{opacity:.3}30%{opacity:1}}
+
+  /* ---------- GOVERNANCE PANEL ---------- */
+  .gov{display:flex;flex-direction:column;gap:16px}
+
+  .controls{
+    display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--border);
+    border-radius:14px;padding:12px 14px;flex-wrap:wrap;
+  }
+  .btn-play{
+    background:var(--nv-green);color:#0a1400;border:none;padding:10px 22px;border-radius:10px;
+    font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;transition:.15s;
+    box-shadow:0 0 20px rgba(118,185,0,0.4);
+  }
+  .btn-play:hover{background:var(--nv-green-bright);transform:translateY(-1px)}
+  .btn-play:disabled{background:#2a3a1a;color:#5a6a4a;box-shadow:none;cursor:default;transform:none}
+  .btn-reset{background:transparent;border:1px solid var(--border);color:var(--muted);padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+  .btn-reset:hover{border-color:var(--nv-green);color:var(--ink)}
+  .hint{font-size:11px;color:var(--muted);flex:1;min-width:140px}
+
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+  .panel .ph{
+    padding:11px 15px;font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
+    border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;color:var(--muted);
+  }
+  .panel .ph .live{display:flex;align-items:center;gap:6px;color:var(--nv-green);font-size:10px}
+  .panel .ph .live .pulse{width:7px;height:7px;border-radius:50%;background:var(--nv-green);animation:pulse 1.5s infinite}
+  @keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(118,185,0,0.5)}50%{opacity:.6;box-shadow:0 0 0 5px rgba(118,185,0,0)}}
+
+  /* flow steps */
+  .flow{padding:8px 10px;display:flex;flex-direction:column;gap:2px}
+  .step{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:8px;font-size:12.5px;transition:.3s;opacity:.4}
+  .step.active{opacity:1;background:rgba(118,185,0,0.07)}
+  .step.done{opacity:.85}
+  .step .ic{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--muted);display:grid;place-items:center;font-size:11px;flex-shrink:0;transition:.3s}
+  .step.done .ic{background:var(--nv-green);border-color:var(--nv-green);color:#0a1400}
+  .step.active .ic{border-color:var(--nv-green);color:var(--nv-green);animation:spin 1s linear infinite}
+  .step.active.gate-ic .ic{animation:none;border-color:var(--hold);color:var(--hold)}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .step .tag{margin-left:auto;font-size:9px;font-weight:700;padding:2px 7px;border-radius:5px;letter-spacing:.5px}
+  .tag.IN{background:rgba(90,150,255,0.15);color:#7fb0ff}
+  .tag.CTL{background:rgba(255,176,32,0.15);color:var(--hold)}
+  .tag.OUT{background:rgba(255,59,59,0.15);color:#ff7a7a}
+
+  /* audit log */
+  .log{padding:8px 10px;height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:5px;font-family:'JetBrains Mono',monospace}
+  .log::-webkit-scrollbar{width:5px}.log::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+  .logline{font-size:11px;display:flex;gap:8px;align-items:flex-start;animation:slidein .3s ease;padding:3px 4px;border-radius:5px}
+  @keyframes slidein{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
+  .logline .lv{font-weight:700;flex-shrink:0;width:54px}
+  .logline.allow .lv{color:var(--allow)}
+  .logline.block .lv{color:var(--block)}
+  .logline.hold .lv{color:var(--hold)}
+  .logline.block{background:rgba(255,59,59,0.06)}
+  .logline.hold{background:rgba(255,176,32,0.06)}
+  .logline .lt{color:#aab8a8;line-height:1.4}
+  .logline .lt .ep{color:var(--muted)}
+
+  /* score bar */
+  .score{display:flex;gap:14px;padding:14px 15px;align-items:center;flex-wrap:wrap}
+  .score .item{flex:1;min-width:90px}
+  .score .num{font-size:26px;font-weight:900;font-family:'JetBrains Mono',monospace;line-height:1}
+  .score .num.g{color:var(--nv-green)}
+  .score .num.r{color:var(--block)}
+  .score .num.y{color:var(--hold)}
+  .score .lb{font-size:10px;color:var(--muted);margin-top:4px;letter-spacing:.3px}
+  .score .big{flex:1.4;min-width:120px;border-left:1px solid var(--border);padding-left:14px}
+  .score .big .num{color:var(--nv-green-bright);font-size:30px}
+
+  .empty{color:var(--muted);font-size:11px;text-align:center;padding:30px 10px;font-style:italic}
+
+  .footer-note{margin-top:22px;text-align:center;font-size:11px;color:var(--muted);line-height:1.7}
+
+  /* ---------- MULTI-AGENT COLLABORATION VIEW ---------- */
+  .agents{padding:10px;display:flex;flex-direction:column;gap:7px}
+  .agt{border:1px solid var(--border);border-radius:10px;padding:9px 11px;background:var(--panel-2);opacity:.45;transition:.35s;position:relative}
+  .agt.active{opacity:1;border-color:var(--nv-green);background:rgba(118,185,0,0.06);box-shadow:0 0 16px rgba(118,185,0,0.12)}
+  .agt.done{opacity:.8}
+  .agt .ah{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700}
+  .agt .ah .role{color:var(--ink)}
+  .agt .ah .mdl{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:8.5px;padding:2px 6px;border-radius:5px;font-weight:600}
+  .agt .mdl.super{background:rgba(212,160,23,0.15);color:#e0b94a}
+  .agt .mdl.nano{background:rgba(90,150,255,0.15);color:#7fb0ff}
+  .agt .think{font-size:11px;color:#b8c8b0;line-height:1.45;margin-top:6px;min-height:16px;font-style:italic}
+  .agt .think .cur{display:inline-block;width:6px;height:12px;background:var(--nv-green);margin-left:1px;animation:cursor .7s steps(2) infinite;vertical-align:middle}
+  @keyframes cursor{0%,100%{opacity:1}50%{opacity:0}}
+  .agt .act{font-size:10.5px;color:var(--muted);margin-top:4px;font-family:'JetBrains Mono',monospace}
+  .agt .act .ok{color:var(--nv-green)}
+  .agt .handoff{text-align:center;color:var(--nv-green);font-size:13px;height:0;overflow:visible;margin:-2px 0}
+  .agt-spin{display:inline-block;width:10px;height:10px;border:2px solid var(--nv-green);border-top-color:transparent;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:5px}
+  .footer-note b{color:var(--nv-green)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="logo">桐</div>
+      <div>
+        <h1>AI 報價詢價 Agent · 包膠鐵輪</h1>
+        <div class="sub">桐聚科技 GatherEase · powered by OpenClaw + Nemotron + NemoClaw</div>
+      </div>
+    </div>
+    <div class="slogan">流程交給 AI，決策留給老闆</div>
+  </header>
+
+  <div class="stage">
+    <!-- LEFT: LINE phone -->
+    <div class="phone">
+      <div class="phone-screen">
+        <div class="line-head">
+          <div class="av">桐</div>
+          <div style="flex:1">
+            <div class="nm">報價助手 Agent</div>
+            <div class="st"><span class="dot"></span>線上 · 自主運行中</div>
+          </div>
+          <div style="font-size:18px;color:#9fb4d0">⋮</div>
+        </div>
+        <div class="chat" id="chat">
+          <div class="empty" id="emptyChat">按右側「▶ 播放 Demo」<br>看 AI 在 Gmail、讀圖、LINE、系統間替老闆跑完整張報價</div>
+        </div>
+
+        <!-- supplier email overlay (slides over when agent goes outbound) -->
+        <div class="supplier-view" id="supplierView">
+          <div class="sv-head">
+            <span id="svBack">‹</span>
+            <div style="flex:1">
+              <div class="sv-title">廠商端 · 收件匣</div>
+              <div class="sv-sub" id="svSub">agent 對外發送中…</div>
+            </div>
+            <span class="sv-badge">Gmail</span>
+          </div>
+          <div class="sv-body" id="svBody"></div>
+        </div>
+
+        <!-- engineer drawing-reading scene -->
+        <div class="scene eng-scene" id="engScene">
+          <div class="eng-head">🔧 工程判讀 Agent<span class="badge">Nemotron Super</span></div>
+          <div class="eng-body" id="engBody"></div>
+        </div>
+
+        <!-- system archive scene -->
+        <div class="scene sys-scene" id="sysScene">
+          <div class="sys-head">🗄️ 報價系統 · 存檔<span class="badge">persistent</span></div>
+          <div class="sys-body" id="sysBody"></div>
+        </div>
+
+        <div class="scene-label" id="sceneLabel"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT: governance -->
+    <div class="gov">
+      <div class="controls">
+        <button class="btn-play" id="playBtn" onclick="runDemo()">▶ 播放 Demo</button>
+        <button class="btn-reset" onclick="resetDemo()">重置</button>
+        <div class="hint">老闆在 LINE 上指揮、簽核；右側即時顯示 NemoClaw 治理層在每一步守門。</div>
+      </div>
+
+      <div class="panel">
+        <div class="ph">多 Agent 協作 · OpenClaw
+          <span class="live"><span class="pulse"></span>協作中</span>
+        </div>
+        <div class="agents" id="agents">
+          <div class="agt" id="agt-engineer">
+            <div class="ah"><span>🔧</span><span class="role">工程判讀 Agent</span><span class="mdl super">Nemotron Super</span></div>
+            <div class="think" id="think-engineer">待命中…</div>
+            <div class="act" id="act-engineer"></div>
+          </div>
+          <div class="agt" id="agt-planner">
+            <div class="ah"><span>📅</span><span class="role">生管 Agent</span><span class="mdl super">Nemotron Super</span></div>
+            <div class="think" id="think-planner">待命中…</div>
+            <div class="act" id="act-planner"></div>
+          </div>
+          <div class="agt" id="agt-quote">
+            <div class="ah"><span>📊</span><span class="role">報價主 Agent</span><span class="mdl super">Nemotron Super</span></div>
+            <div class="think" id="think-quote">待命中…</div>
+            <div class="act" id="act-quote"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="ph">Agent 工作流 · Tool Calling
+          <span class="live"><span class="pulse"></span>自主執行</span>
+        </div>
+        <div class="flow" id="flow"></div>
+      </div>
+
+      <div class="panel">
+        <div class="ph">NemoClaw 治理日誌
+          <span class="live"><span class="pulse"></span>即時監控</span>
+        </div>
+        <div class="log" id="log"><div class="empty">尚未有治理事件</div></div>
+      </div>
+
+      <div class="panel">
+        <div class="ph">即時治理佔比</div>
+        <div class="score">
+          <div class="item"><div class="num g" id="sAllow">0</div><div class="lb">放行 ALLOW</div></div>
+          <div class="item"><div class="num r" id="sBlock">0</div><div class="lb">攔截 BLOCK</div></div>
+          <div class="item"><div class="num y" id="sHold">0</div><div class="lb">人類確認 HOLD</div></div>
+          <div class="item big"><div class="num" id="sRatio">0%</div><div class="lb">工具呼叫經 NemoClaw 治理</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer-note">
+    Demo 原型 · <b>詢價 · 溝通 · 彙整 · 計算</b>（AI 做）→ <b>做生意的策略決定</b>（老闆做）<br>
+    資料留工廠、模型來工廠、人類最後把關 · 流程交給 AI，決策留給老闆
+  </div>
+</div>
+
+<script>
+const chat = document.getElementById('chat');
+const flowEl = document.getElementById('flow');
+const logEl = document.getElementById('log');
+const playBtn = document.getElementById('playBtn');
+
+let counts = {allow:0, block:0, hold:0, total:0};
+
+// flow steps definition
+const STEPS = [
+  {id:'s1', label:'接收客戶詢價單（含交期/品質要求）', tag:'IN'},
+  {id:'s1b', label:'工程判讀 Sub-Agent：讀圖面、定產品/BOM', tag:'CTL'},
+  {id:'s2', label:'拆解 BOM（鐵輪採購/處理代工/包膠自製）', tag:'IN'},
+  {id:'s3', label:'查詢鐵輪採購價 + 今日膠料價', tag:'IN'},
+  {id:'s3c', label:'生管 Sub-Agent：產線排程評估', tag:'CTL'},
+  {id:'s3b', label:'計算材料 + 工時成本', tag:'CTL'},
+  {id:'s4', label:'發詢價給廠商（價格/交期/品質）', tag:'OUT', gate:true},
+  {id:'s4b', label:'收信安全側錄（injection 防禦）', tag:'CTL'},
+  {id:'s5', label:'多維度彙整比價', tag:'CTL'},
+  {id:'s6', label:'權衡 trade-off → 回報老闆討論', tag:'CTL', gate:true},
+  {id:'s7', label:'擋下套機密的人（保護老闆）', tag:'CTL', gate:true},
+  {id:'s8', label:'產生報價建議', tag:'CTL'},
+  {id:'s9', label:'最終報價 → 老闆簽核', tag:'OUT', gate:true},
+  {id:'s10', label:'發加密報價單給客戶 + 寫進系統', tag:'OUT'},
+];
+
+function initFlow(){
+  flowEl.innerHTML = '';
+  STEPS.forEach(s=>{
+    const d = document.createElement('div');
+    d.className = 'step' + (s.gate?' gate-ic':'');
+    d.id = 'flow-'+s.id;
+    d.innerHTML = `<div class="ic">○</div><div>${s.label}</div><div class="tag ${s.tag}">${s.tag}</div>`;
+    flowEl.appendChild(d);
+  });
+}
+function stepState(id, state){
+  const el = document.getElementById('flow-'+id);
+  if(!el) return;
+  el.classList.remove('active','done');
+  const ic = el.querySelector('.ic');
+  if(state==='active'){el.classList.add('active'); ic.textContent='◌';}
+  if(state==='done'){el.classList.add('done'); ic.textContent='✓';}
+}
+
+// ---- multi-agent collaboration driver ----
+function agtActivate(who){
+  document.querySelectorAll('.agt').forEach(a=>{ if(a.id!=='agt-'+who) a.classList.remove('active'); });
+  const el=document.getElementById('agt-'+who);
+  if(el){ el.classList.remove('done'); el.classList.add('active'); }
+}
+function agtDone(who){
+  const el=document.getElementById('agt-'+who);
+  if(el){ el.classList.add('done'); }
+}
+async function agtThink(who, text){
+  const el=document.getElementById('think-'+who);
+  if(!el) return;
+  el.innerHTML='💭 ';
+  for(let i=0;i<text.length;i++){
+    el.innerHTML='💭 '+text.slice(0,i+1)+'<span class="cur"></span>';
+    await sleep(18);
+  }
+  el.innerHTML='💭 '+text;
+}
+function agtAct(who, text, done){
+  const el=document.getElementById('act-'+who);
+  if(el) el.innerHTML = done ? `✅ <span class="ok">${text}</span>` : `<span class="agt-spin"></span>${text}`;
+}
+function resetAgents(){
+  ['engineer','planner','quote'].forEach(w=>{
+    const a=document.getElementById('agt-'+w); if(a)a.classList.remove('active','done');
+    const t=document.getElementById('think-'+w); if(t)t.textContent='待命中…';
+    const c=document.getElementById('act-'+w); if(c)c.innerHTML='';
+  });
+}
+
+function addLog(level, text, ep){
+  if(logEl.querySelector('.empty')) logEl.innerHTML='';
+  const map={allow:'ALLOW',block:'BLOCK',hold:'HOLD'};
+  const d=document.createElement('div');
+  d.className='logline '+level;
+  d.innerHTML=`<span class="lv">${map[level]}</span><span class="lt">${text}${ep?` <span class="ep">${ep}</span>`:''}</span>`;
+  logEl.appendChild(d);
+  logEl.scrollTop=logEl.scrollHeight;
+  counts[level]++; counts.total++;
+  updateScore();
+}
+function updateScore(){
+  document.getElementById('sAllow').textContent=counts.allow;
+  document.getElementById('sBlock').textContent=counts.block;
+  document.getElementById('sHold').textContent=counts.hold;
+  const governed = counts.block+counts.hold;
+  const ratio = counts.total? Math.round((counts.allow+governed)/counts.total*100):0;
+  // every logged event passed through NemoClaw, so ratio reflects governed share of meaningful calls
+  const meaningful = counts.total;
+  const pct = counts.total? Math.round(((counts.block+counts.hold)/counts.total)*100):0;
+  document.getElementById('sRatio').textContent = counts.total? '100%':'0%';
+}
+
+// chat helpers
+function clearEmpty(){const e=document.getElementById('emptyChat'); if(e)e.remove();}
+function botText(sender, html){
+  clearEmpty();
+  const m=document.createElement('div');m.className='msg bot';
+  m.innerHTML=`<div class="sender">${sender}</div><div class="bubble">${html}<div class="time" style="color:#999">${now()}</div></div>`;
+  chat.appendChild(m);scrollChat();
+}
+function meText(html){
+  clearEmpty();
+  const m=document.createElement('div');m.className='msg me';
+  m.innerHTML=`<div class="bubble">${html}<div class="time">${now()}</div></div>`;
+  chat.appendChild(m);scrollChat();
+}
+function botCard(html){
+  clearEmpty();
+  const m=document.createElement('div');m.className='msg bot';
+  m.innerHTML=`<div class="sender">報價助手 Agent</div><div class="card">${html}</div>`;
+  chat.appendChild(m);scrollChat();
+}
+function typing(){
+  clearEmpty();
+  const t=document.createElement('div');t.className='typing';t.id='typing';
+  t.innerHTML='<span></span><span></span><span></span>';
+  chat.appendChild(t);scrollChat();
+}
+function stopTyping(){const t=document.getElementById('typing'); if(t)t.remove();}
+function scrollChat(){chat.scrollTop=chat.scrollHeight;}
+function now(){const d=new Date();return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+// supplier email view
+const supplierView=document.getElementById('supplierView');
+const svBody=document.getElementById('svBody');
+const svSub=document.getElementById('svSub');
+function showSupplier(sub){svSub.textContent=sub||'';supplierView.classList.add('show');}
+function hideSupplier(){supplierView.classList.remove('show');}
+function clearSupplier(){svBody.innerHTML='';}
+function svEmail({from,sub,body,attach,reply,danger,inject}){
+  const d=document.createElement('div');d.className='email'+(reply?' reply':'')+(danger?' danger':'');
+  d.innerHTML=`<div class="efrom">${from}<span class="etime">${now()}</span></div>
+    <div class="esub">${sub}</div><div class="ebody">${body}</div>
+    ${inject?`<div class="inject">⚠️ 內含可疑指令：${inject}</div>`:''}
+    ${attach?`<div class="attach">📎 ${attach}</div>`:''}`;
+  svBody.appendChild(d);svBody.scrollTop=svBody.scrollHeight;
+}
+function svFastForward(text){
+  const d=document.createElement('div');d.className='fastfwd';d.textContent='⏱ '+text;
+  svBody.appendChild(d);svBody.scrollTop=svBody.scrollHeight;
+}
+
+// scene label
+const sceneLabel=document.getElementById('sceneLabel');
+function showLabel(t){sceneLabel.textContent=t;sceneLabel.classList.add('show');}
+function hideLabel(){sceneLabel.classList.remove('show');}
+
+// engineer drawing scene
+const engScene=document.getElementById('engScene');
+const engBody=document.getElementById('engBody');
+function showEng(){engScene.classList.add('show');}
+function hideEng(){engScene.classList.remove('show');}
+function clearEng(){engBody.innerHTML='';}
+// a simple roller drawing SVG
+const rollerSVG=`<svg viewBox="0 0 320 120" xmlns="http://www.w3.org/2000/svg">
+  <rect x="2" y="2" width="316" height="116" fill="none" stroke="#222" stroke-width="1"/>
+  <circle cx="270" cy="34" r="20" fill="none" stroke="#111" stroke-width="1.5"/>
+  <circle cx="270" cy="34" r="8" fill="none" stroke="#111" stroke-width="1.5"/>
+  <text x="246" y="12" font-size="7" fill="#111">Ø50.0</text>
+  <rect x="70" y="60" width="150" height="26" fill="none" stroke="#111" stroke-width="1.5"/>
+  <rect x="44" y="66" width="26" height="14" fill="none" stroke="#111" stroke-width="1.2"/>
+  <rect x="220" y="66" width="26" height="14" fill="none" stroke="#111" stroke-width="1.2"/>
+  <line x1="30" y1="73" x2="44" y2="73" stroke="#111" stroke-width="1.2"/>
+  <line x1="246" y1="73" x2="262" y2="73" stroke="#111" stroke-width="1.2"/>
+  <text x="120" y="100" font-size="7" fill="#111">包膠段 598</text>
+  <text x="120" y="56" font-size="7" fill="#111">鐵輪本體</text>
+  <text x="8" y="112" font-size="6" fill="#888">GatherEase.ai · 包膠鐵輪</text>
+</svg>`;
+function engShowDrawing(){
+  clearEng();
+  const d=document.createElement('div');d.className='drawing scanning';
+  d.innerHTML=rollerSVG+'<div class="scan"></div>';
+  engBody.appendChild(d);
+  const s=document.createElement('div');s.className='eng-status';s.id='engStatus';
+  s.innerHTML='<span class="sp"></span>正在讀圖面…辨識尺寸、公差、工序';
+  engBody.appendChild(s);
+}
+function engStopScan(){const d=engBody.querySelector('.drawing');if(d)d.classList.remove('scanning');const s=document.getElementById('engStatus');if(s)s.remove();}
+function engReadResult(){
+  const d=document.createElement('div');d.className='eng-read';
+  d.innerHTML=`<div class="rt">🔧 讀圖判讀完成</div>
+    <table>
+      <tr><td>判定產品</td><td>包膠鐵輪</td></tr>
+      <tr><td>結構</td><td>鐵輪本體 + 外層包膠</td></tr>
+      <tr><td>規格</td><td>Ø50(+0.25)、包膠段 598、軸長 732</td></tr>
+      <tr><td>膠料</td><td>硬度 40±5、抗靜電</td></tr>
+    </table>
+    <div class="split">採購/代工/自製拆分：<br>
+      • 鐵輪本體 → <b class="buy">外購</b><br>
+      • 鐵輪表面處理 → <b class="out">代工</b><br>
+      • 包膠 → <b class="self">自製（我們的強項）</b></div>`;
+  engBody.appendChild(d);engBody.scrollTop=engBody.scrollHeight;
+}
+
+// system archive scene
+const sysScene=document.getElementById('sysScene');
+const sysBody=document.getElementById('sysBody');
+function showSys(){sysScene.classList.add('show');}
+function hideSys(){sysScene.classList.remove('show');}
+function clearSys(){sysBody.innerHTML='';}
+function sysRow(k,v){
+  const d=document.createElement('div');d.className='sys-row';
+  d.innerHTML=`<span class="k">${k}</span><span class="v">${v}</span>`;
+  sysBody.appendChild(d);sysBody.scrollTop=sysBody.scrollHeight;
+}
+function sysSaved(){
+  const d=document.createElement('div');d.className='sys-saved';
+  d.innerHTML='✅ 報價單已寫入系統（可追溯、下次當歷史參考）';
+  sysBody.appendChild(d);
+}
+
+// gate (returns a promise that resolves when user clicks)
+function gate({block, title, desc, okLabel, noLabel, priceInput}){
+  return new Promise(resolve=>{
+    clearEmpty();
+    const m=document.createElement('div');m.className='msg bot';
+    const inner=document.createElement('div');
+    inner.className='gate'+(block?' block':'');
+    inner.innerHTML=`<div class="gh">${block?'🛑 NemoClaw 攔截':'✋ 需要您確認'}：${title}</div><div class="gd">${desc}</div>`;
+    if(priceInput){
+      const pi=document.createElement('div');pi.className='price-input';
+      pi.innerHTML=`<input id="priceField" type="text" placeholder="輸入最終報價 NT$" value="1,580">`;
+      inner.appendChild(pi);
+    }
+    const btns=document.createElement('div');btns.className='btns';
+    const ok=document.createElement('button');ok.className='ok';ok.textContent=okLabel||'確認';
+    const no=document.createElement('button');no.className='no';no.textContent=noLabel||'取消';
+    btns.appendChild(ok);btns.appendChild(no);
+    inner.appendChild(btns);
+    m.innerHTML=`<div class="sender">報價助手 Agent</div>`;
+    m.appendChild(inner);
+    chat.appendChild(m);scrollChat();
+    ok.onclick=()=>{inner.classList.add('done');let v=null;if(priceInput){const f=document.getElementById('priceField');v=f?f.value:null;} resolve({approved:true,value:v});};
+    no.onclick=()=>{inner.classList.add('done');resolve({approved:false});};
+  });
+}
+
+async function runDemo(){
+  resetDemo();
+  playBtn.disabled=true; playBtn.textContent='● Demo 進行中';
+
+  // 0 customer order arrives — show in Gmail scene first
+  await sleep(400);
+  showLabel('場景：客戶詢價單進來（Gmail）');
+  clearSupplier(); showSupplier('收到客戶來信');
+  document.querySelector('#supplierView .sv-title').textContent='我方收件匣';
+  svSub.textContent='來自鴻碩電子';
+  svEmail({from:'⬅ 鴻碩電子 · 採購王經理',
+    sub:'詢價 · 訂製包膠鐵輪 ×200',
+    body:`您好，附件工程圖一份，欲訂製包膠鐵輪 ×200 支：<br>鐵輪外徑 Ø50、包膠段 598mm、膠料硬度 40±5、需抗靜電。<br>要求 10 天內交貨，再麻煩報價，謝謝！`,
+    attach:'包膠鐵輪_工程圖.pdf'});
+  addLog('allow','收到客戶詢價 email + 工程圖附件','mail/inbound');
+  await sleep(2000);
+  hideSupplier();
+  document.querySelector('#supplierView .sv-title').textContent='廠商端 · 收件匣';
+  hideLabel();
+  await sleep(400);
+  botText('系統 · 來自客戶','📩 鴻碩電子詢價：包膠鐵輪 ×200 支｜交期 10 天｜膠料硬度 40±5、抗靜電');
+  addLog('allow','接收客戶詢價單（含交期/品質要求，本機解析）','rest/orders');
+
+  // s1
+  stepState('s1','active'); await sleep(500);
+  stepState('s1','done');
+
+  // s1b — ENGINEERING SUB-AGENT (the highlight): switch to drawing scene
+  stepState('s1b','active');
+  agtActivate('engineer');
+  agtAct('engineer','讀取工程圖 PDF…');
+  addLog('allow','工程判讀 Sub-Agent 啟動（Nemotron Super）','agent/engineer');
+  await sleep(400);
+  showLabel('場景：工程師讀圖');
+  clearEng(); engShowDrawing(); showEng();
+  await agtThink('engineer','這是包膠鐵輪，軸端有鍵槽、倒角，外徑 Ø50…包膠段 598，膠料硬度 40±5');
+  await sleep(800);
+  engStopScan();
+  addLog('allow','讀圖完成：辨識產品、規格、工序','agent/engineer');
+  await agtThink('engineer','鐵輪本體可外購、表面處理要專業設備得代工、包膠是我們的強項可自製');
+  await sleep(400);
+  engReadResult();
+  agtAct('engineer','產出 BOM + 採購/代工/自製拆分',true);
+  addLog('allow','判定採購/代工/自製拆分 → 交付 BOM','agent/engineer');
+  await sleep(2400);
+  agtDone('engineer');
+  hideEng(); hideLabel();
+  stepState('s1b','done');
+
+  // s2 — BOM (flow only, no LINE spam) — quote agent picks up
+  agtActivate('quote');
+  agtAct('quote','拆 BOM、查歷史與料價…');
+  stepState('s2','active');
+  addLog('allow','拆解 BOM：鐵輪（採購）、表面處理（代工）、包膠（自製）','tool/bom');
+  await agtThink('quote','鐵輪外購、包膠自製要算膠料+工時，表面處理代工得發詢價');
+  stepState('s2','done');
+
+  // history quote reference (flow only)
+  addLog('allow','撈出歷史報價（2025/09 ~$2,180、2025/12 ~$2,380）','tool/history');
+  await sleep(700);
+
+  // s3 — purchase + material price (flow only)
+  stepState('s3','active');
+  addLog('allow','查鐵輪採購價 $650/支 + 今日膠料 $320/kg（+4%）','tool/matprice');
+  await sleep(900);
+  stepState('s3','done');
+
+  // s3c — 生管 sub-agent (flow only) — planner agent
+  agtActivate('planner');
+  agtAct('planner','查包膠產線排程…');
+  stepState('s3c','active');
+  addLog('allow','生管 Sub-Agent：查包膠產線排程（排到 11/28）','agent/planner');
+  await agtThink('planner','包膠線排到 11/28，我端 6 天＋代工＋採購並行，最快 11 天…客戶要 10');
+  addLog('hold','生管評估：最快 11 天 vs 客戶 10 天 → 差 1 天','agent/planner');
+  agtAct('planner','產出：最快 11 天，差 1 天 → 交報價權衡',true);
+  await sleep(700);
+  agtDone('planner');
+  stepState('s3c','done');
+
+  // s3b — cost calc (flow only) — quote agent resumes
+  agtActivate('quote');
+  agtAct('quote','彙整成本…');
+  stepState('s3b','active');
+  addLog('allow','算成本：鐵輪650＋膠料540＋包膠工時280 = 已知 $1,470','tool/cost');
+  await agtThink('quote','已知成本 1,470，歷史同型 ~2,300，交期差 1 天 → 彙整給老闆');
+  agtAct('quote','產出：報價前彙整 → 回報老闆',true);
+  await sleep(800);
+  stepState('s3b','done');
+
+  // ===== ONE consolidated report to the boss on LINE =====
+  await sleep(400);
+  typing(); await sleep(1000); stopTyping();
+  botCard(`<div class="ttl">📋 報價前彙整（鴻碩 · 包膠鐵輪 ×200）</div>
+    <table>
+      <tr><td>產品結構</td><td>鐵輪外購／表面處理代工／包膠自製</td></tr>
+      <tr><td>已知成本</td><td>約 NT$1,470/支</td></tr>
+      <tr><td>表面處理代工</td><td>待詢價</td></tr>
+      <tr><td>歷史同型參考</td><td>～NT$2,300/支</td></tr>
+      <tr><td>生管交期</td><td>最快 11 天（客戶要 10，差 1 天）</td></tr>
+    </table>`);
+
+  // s4 — GATE 1: outbound to suppliers
+  stepState('s4','active');
+  await sleep(600);
+  const g1 = await gate({
+    block:true,
+    title:'對外傳送圖面',
+    desc:'Agent 準備發詢價單 + <b>鐵輪工程圖</b>給 3 家<b>表面處理代工廠</b>，詢問<b>價格／交期／品質</b>：<br>① 全鋼表處 ② 永鎵精密 ③ 新鎏鍍（新廠商）<br><br>偵測到圖面將外送，可能涉及核心設計外流，請老闆確認名單。',
+    okLabel:'確認發送', noLabel:'移除新廠商'
+  });
+  addLog('hold','對外傳送圖面 → 觸發人類確認','egress/suppliers');
+  let toSuppliers;
+  if(g1.approved){
+    addLog('allow','名單核准，詢價單已發送（圖面僅授權廠商）','mail/rfq');
+    meText('OK 發吧，新鎏鍍那家先留著試試 👍');
+    botText('報價助手 Agent','已發送詢價給 3 家代工廠 ✅ 我去外面等回報，有結果回來跟您說');
+    toSuppliers = ['全鋼表處','永鎵精密','新鎏鍍'];
+  }else{
+    addLog('block','已移除未授權廠商，圖面外流風險解除','egress/suppliers');
+    meText('新廠商先拿掉，只發給熟的兩家');
+    botText('報價助手 Agent','收到，已移除新鎏鍍，只發給全鋼、永鎵 ✅ 我去等回報');
+    toSuppliers = ['全鋼表處','永鎵精密'];
+  }
+  stepState('s4','done');
+
+  // ===== SWITCH TO SUPPLIER VIEW =====
+  await sleep(700);
+  showLabel('場景：發詢價給代工廠（Gmail）');
+  clearSupplier();
+  showSupplier('agent 正在對外發送詢價…');
+  await sleep(500);
+  // outbound RFQ email
+  svEmail({
+    from:'➡ 寄件：報價助手 Agent',
+    sub:`詢價單 RFQ-2026-0518 · 鐵輪表面處理 ×200`,
+    body:`各位廠商您好，附件為鐵輪工程圖，煩請報價並提供：<br>① 單價　② 最快交期　③ 良率/認證。<br>需抗靜電表面處理，客戶要求 10 天內交貨。`,
+    attach:'包膠鐵輪_工程圖.pdf（僅授權廠商）'
+  });
+  addLog('allow',`詢價信＋圖面已送達 ${toSuppliers.length} 家廠商`,'mail/rfq');
+  await sleep(1400);
+  svFastForward('實際等待約 1 天（demo 快轉）');
+  await sleep(1100);
+  svSub.textContent='廠商陸續回報中…';
+  // supplier replies
+  svEmail({reply:true,from:'⬅ 全鋼表處',sub:'Re: 詢價單 RFQ-2026-0518',
+    body:`<div class="quote-line"><span>單價</span><b>NT$320</b></div><div class="quote-line"><span>交期</span><b>9 天</b></div><div class="quote-line"><span>良率</span><b>95%</b></div>`});
+  await sleep(900);
+  svEmail({reply:true,from:'⬅ 永鎵精密',sub:'Re: 詢價單 RFQ-2026-0518',
+    body:`<div class="quote-line"><span>單價</span><b>NT$420</b></div><div class="quote-line"><span>交期</span><b>4 天（可急件）</b></div><div class="quote-line"><span>良率</span><b>99%・有抗靜電認證</b></div>`});
+  await sleep(900);
+  if(toSuppliers.includes('新鎏鍍')){
+    svEmail({reply:true,from:'⬅ 新鎏鍍',sub:'Re: 詢價單 RFQ-2026-0518',
+      body:`<div class="quote-line"><span>單價</span><b>NT$370</b></div><div class="quote-line"><span>交期</span><b>7 天</b></div><div class="quote-line"><span>良率</span><b>97%</b></div>`});
+    await sleep(900);
+  }
+  addLog('allow','收到廠商回報 email，擷取價格/交期/良率','mail/inbound');
+  stepState('s4b','active');
+  await sleep(700);
+  // prompt injection defense — demoted to a passing log line (technical backing, not demo hero)
+  addLog('block','側錄：一封來信夾帶可疑指令，NemoClaw 自動丟棄（prompt injection 防禦）','rail/injection');
+  svSub.textContent='回報完成，agent 收回彙整';
+  await sleep(900);
+  hideSupplier(); hideLabel();
+  await sleep(500);
+  stepState('s4b','done');
+  botText('報價助手 Agent','廠商都回了 👍 我整理成比較表給您看：');
+
+  // s5 — multi-dimension aggregate
+  stepState('s5','active');
+  await sleep(700);
+  addLog('allow','多維度彙整比價','tool/compare');
+  await sleep(400);
+  botCard(`<div class="ttl">📊 多維度比價（鐵輪表面處理代工）</div>
+    <table>
+      <tr><td style="font-weight:700">廠商</td><td style="text-align:center">價格</td><td style="text-align:center">交期</td><td style="text-align:center">良率</td></tr>
+      <tr><td>全鋼表處</td><td style="text-align:center;color:#0a0">$320</td><td style="text-align:center">9天</td><td style="text-align:center">95%</td></tr>
+      <tr><td>永鎵精密</td><td style="text-align:center;color:#c00">$420</td><td style="text-align:center;color:#0a0">4天</td><td style="text-align:center;color:#0a0">99%</td></tr>
+      <tr><td>新鎏鍍</td><td style="text-align:center">$370</td><td style="text-align:center">7天</td><td style="text-align:center">97%</td></tr>
+    </table>`);
+  stepState('s5','done');
+
+  // s6 — GATE 2: TRADE-OFF discussion (the deep-domain moment) — ties in 生管's 差1天
+  stepState('s6','active');
+  await sleep(700);
+  typing(); await sleep(900); stopTyping();
+  botText('報價助手 Agent','綜合生管和代工兩端算給您：客戶要 <b>10 天</b>。<br>👉 生管說我端包膠＋採購要 6 天；表面處理代工若用<b>永鎵（4天/有認證）</b>，總共剛好 <b>10 天趕得上</b>，但代工貴 $100/支。<br>👉 用全鋼（9天）會總共 15 天，<b>來不及</b>。');
+  const g2 = await gate({
+    block:false,
+    title:'交期 vs 成本，要怎麼取捨？',
+    desc:'生管評估：要壓進客戶的 10 天，<b>表面處理只能用最快的永鎵（貴 $100/支，共 +$20,000）</b>。<br><br>• 吃下成本、用永鎵準時交？<br>• 還是用便宜的全鋼、回頭跟客戶談延到 15 天？<br><br>這是<b>生意判斷</b>，我不替您決定。',
+    okLabel:'用永鎵準時交', noLabel:'我去跟客戶談延期'
+  });
+  addLog('hold','生管產能＋代工交期權衡 → 回報老闆討論（AI 不自動選）','human/tradeoff');
+  if(g2.approved){
+    meText('鴻碩是大客戶要顧，用永鎵準時交！👍');
+    addLog('allow','採用永鎵（趕交期+認證），成本基準確認','tool/cost');
+    botText('報價助手 Agent','好～用永鎵。最終單支成本 <b>NT$1,890</b>（鐵輪650＋膠料540＋包膠工時280＋表處420）');
+  }else{
+    meText('我打給鴻碩喬看看能不能延期 📞');
+    addLog('allow','議價/交期協商交由老闆（AI 不自動決定）','human/deal');
+    botText('報價助手 Agent','收到，先用全鋼的方案估，成本 <b>NT$1,790</b>，等您跟客戶談的結果 👌');
+  }
+  stepState('s6','done');
+
+  // s7 — GATE: 擋下套機密的人（agent protects the boss）
+  stepState('s7','active');
+  await sleep(700);
+  typing(); await sleep(800); stopTyping();
+  botText('報價助手 Agent','⚠️ 剛收到一封信，自稱「同業朋友」，問題怪怪的：');
+  botCard(`<div class="ttl">📨 可疑來信</div>
+    <div style="font-size:12px;color:#333;line-height:1.6">「你們這個包膠鐵輪<b>成本是怎麼抓的</b>？鐵輪表面處理<b>給哪家代工</b>？方便報個底價參考嗎？」</div>`);
+  const g3 = await gate({
+    block:true,
+    title:'有人在套你的商業機密',
+    desc:'這封信在打聽<b>你的成本算法和供應商</b>——這是你的核心機密，不是正常詢價。<br><br>我<b>沒有回答</b>，先擋下來給您看。要回覆嗎？',
+    okLabel:'不回，封鎖他', noLabel:'我自己處理'
+  });
+  addLog('block','偵測套取成本/供應商的詢問 → 擋下不回答','rail/secret-probe');
+  if(g3.approved){
+    meText('這一定是同行來探的，封鎖！😤');
+    addLog('allow','已封鎖該寄件者，機密未外洩','rail/secret-probe');
+    botText('報價助手 Agent','已擋下、封鎖。您的成本算法和供應商，一個字都沒外流 🔒');
+  }else{
+    meText('我自己回他，謝謝你擋下來');
+    addLog('hold','交由老闆親自處理','human/deal');
+    botText('報價助手 Agent','好，交給您。我只是先確保 AI 不會自己把機密說出去 🔒');
+  }
+  stepState('s7','done');
+
+  // s8 — recommendation
+  stepState('s8','active');
+  addLog('allow','產生報價區間建議','tool/quote');
+  await sleep(900);
+  botCard(`<div class="ttl">💡 報價建議（AI 提供資訊，不替您決定）</div>
+    <table>
+      <tr><td>單支成本</td><td>NT$2,140</td></tr>
+      <tr><td>標準利潤報價</td><td>NT$2,750</td></tr>
+      <tr><td>歷史同型報價</td><td style="color:#0a0">～NT$2,300</td></tr>
+      <tr class="tot"><td>建議：對齊歷史、讓利搶量</td><td>NT$2,450~2,550</td></tr>
+    </table>`);
+  await sleep(400);
+  botText('報價助手 Agent','鴻碩是常下單的大客戶，建議參考歷史價、讓利搶量。<br>但<b>報多少是您的生意決定</b>，請您拍板 👇');
+  stepState('s8','done');
+
+  // s9 — GATE 4: final price, human signs
+  stepState('s9','active');
+  await sleep(500);
+  const g4 = await gate({
+    block:false,
+    title:'最終報價 · 老闆簽核',
+    desc:'這是<b>商業判斷</b>，AI 不會替您決定。<br>請輸入最終報價並簽核，才會送出給客戶：',
+    okLabel:'✍️ 簽核並送出', noLabel:'再想想',
+    priceInput:true
+  });
+  addLog('hold','最終報價 → 等待老闆簽核（不可逆動作）','egress/customer');
+  if(g4.approved){
+    meText(`就報 ${g4.value||'2,500'}，送出！`);
+    addLog('allow',`老闆已簽核（NT$${g4.value||'2,500'}）`,'human/sign');
+    stepState('s9','done');
+
+    // s10 — send encrypted quote to customer (Gmail scene) + write to system
+    stepState('s10','active');
+    await sleep(500);
+    showLabel('場景：寄加密報價單給客戶');
+    clearSupplier(); showSupplier('agent 對外寄送報價單給客戶…');
+    svSub.textContent='寄給客戶（鴻碩電子）';
+    document.querySelector('#supplierView .sv-title').textContent='客戶端 · 收件匣';
+    await sleep(500);
+    svEmail({from:'➡ 寄件：報價助手 Agent → 鴻碩電子',
+      sub:`報價單 QUO-2026-0518 · 包膠鐵輪 ×200（已加密）`,
+      body:`王經理您好，附件為本次包膠鐵輪報價單，單支 NT$${g4.value||'2,500'}。<br>⚠️ 檔案已加密，請以另行通知的密碼開啟。`,
+      attach:'包膠鐵輪_報價單.pdf 🔒（需密碼）'});
+    addLog('allow','加密報價單已寄出（客戶需密碼開啟）','mail/quote');
+    addLog('block','報價單外送 → egress policy 檢查：僅寄授權客戶','egress/customer');
+    await sleep(1600);
+    hideSupplier();
+    document.querySelector('#supplierView .sv-title').textContent='廠商端 · 收件匣';
+    await sleep(400);
+
+    // write to system
+    showLabel('場景：寫進報價系統');
+    clearSys(); showSys();
+    await sleep(500);
+    sysRow('報價單號','QUO-2026-0518');
+    await sleep(350); sysRow('客戶','鴻碩電子');
+    await sleep(350); sysRow('產品','包膠鐵輪 ×200');
+    await sleep(350); sysRow('成本/報價',`NT$1,890 / NT$${g4.value||'2,500'}`);
+    await sleep(350); sysRow('採用代工','永鎵精密（表面處理）');
+    await sleep(350); sysRow('狀態','已簽核・已加密寄出');
+    addLog('allow','報價單寫入系統（persistent，可追溯+當未來歷史）','db/archive');
+    await sleep(500); sysSaved();
+    await sleep(1800);
+    hideSys(); hideLabel();
+    stepState('s10','done');
+
+    botText('報價助手 Agent','✅ 報價單已加密寄給鴻碩、並寫進系統存檔。<br>NT$'+(g4.value||'2,500')+' / 支。<br><br>原本要好幾小時的判讀、估價、彙整，<b>我幾十秒做完</b>（等廠商回報除外）。<br>機密我幫您擋、交期生管幫您算、價格您決定、報價單只給對的人 🙌');
+  }else{
+    meText('等等，我再想一下價格');
+    botText('報價助手 Agent','沒問題，報價單暫存草稿，您決定好再送 👌');
+    stepState('s9','done');
+  }
+
+  // market validation + DGX Spark (honest closing)
+  await sleep(900);
+  botText('系統 · 旁白','這個構想，我們實際問過很多位中小企業老闆。反應幾乎一樣：<b>「這個我太需要了——但我的成本、客戶、圖面，會不會外流？」</b>');
+  await sleep(900);
+  botCard(`<div class="ttl">🏭 為什麼資料不會外流</div>
+    <div style="font-size:12px;color:#333;line-height:1.7">未來部署在工廠時：<br>• 整台 <b>NVIDIA DGX Spark</b> 放工廠裡<br>• <b>Nemotron</b> 模型在本地跑（Nano 讀圖/分類、Super 推理判斷）<br>• <b>OpenClaw + NemoClaw</b> 在本地治理<br><b>不是把資料送上雲端，是把模型搬進工廠。</b></div>`);
+  await sleep(700);
+  botText('系統 · 旁白','（誠實說明）今天這個 demo 是一個人在家、用雲端 Nemotron 端點做的原型；但架構從第一天就為「資料不出廠」設計——本地 DGX Spark 是它正式落地的形態。');
+
+  // closing
+  await sleep(900);
+  botText('報價助手 Agent','— — — — — — — —<br>讓幾千個像我爸爸一樣的中小企業老闆，把繁瑣的詢價、溝通、彙整、計算交出去，拿到最佳定價策略，<b>做生意的決策權交回他們手上</b>。<br><br>資料留工廠、模型來工廠、人類最後把關。<br><b>流程交給 AI，決策留給老闆。</b>');
+
+  playBtn.disabled=false; playBtn.textContent='▶ 重播 Demo';
+}
+
+function resetDemo(){
+  chat.innerHTML='<div class="empty" id="emptyChat">按「▶ 播放 Demo」<br>看 AI 在 Gmail、讀圖、LINE、系統間替老闆跑完整張報價</div>';
+  logEl.innerHTML='<div class="empty">尚未有治理事件</div>';
+  hideSupplier(); clearSupplier();
+  hideEng(); clearEng(); hideSys(); clearSys(); hideLabel();
+  resetAgents();
+  document.querySelector('#supplierView .sv-title').textContent='廠商端 · 收件匣';
+  counts={allow:0,block:0,hold:0,total:0};
+  updateScore();
+  initFlow();
+}
+
+initFlow();
+</script>
+</body>
+</html>

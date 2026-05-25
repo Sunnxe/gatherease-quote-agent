@@ -1,0 +1,29 @@
+{
+  "name": "calc_cost",
+  "version": "0.1.0",
+  "description": "依 BOM、選定的代工廠（或預設）、訂單數量，算出整張單的成本明細與單位成本",
+  "agent": "quote",
+  "category": "CONTROL",
+  "model": null,
+  "inputs": {
+    "product_id": { "type": "string", "required": true },
+    "bom": { "type": "array", "required": true },
+    "qty": { "type": "number", "required": true },
+    "surface_treatment_supplier_id": {
+      "type": "string",
+      "description": "選定的表面處理代工廠 ID；若未指定則用 cost_rates 預設或最便宜的",
+      "required": false
+    }
+  },
+  "outputs": {
+    "unit_cost_breakdown": "object",
+    "unit_cost_twd": "number",
+    "total_cost_twd": "number",
+    "suggested_unit_price_twd": "number (tier 別建議價)",
+    "_audit": "object"
+  },
+  "audit": {
+    "level": "INFO",
+    "tag": "cost-calculation"
+  }
+}
