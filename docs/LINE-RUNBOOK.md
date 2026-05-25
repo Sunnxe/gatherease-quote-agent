@@ -168,3 +168,70 @@ LINE_BOSS_USER_ID=U...          # 第一次加好友後從 webhook trace 抓
 
 `skills/line_notify/webhook.js` 加了 debug trace（任何進來的 request 都會印一行）。
 demo 錄完之後可以拿掉這些 trace logs，code 會比較乾淨。在 webhook.js 找 `>>> DEBUG trace <<<` 那段刪掉就好。
+
+## 8. E2E：跑 orchestrator 真的 push flex 到手機
+
+**架構重點**：webhook server 跟 orchestrator **必須在同一個 Node process**，pendingHolds Map 才共用。所以 orchestrator 啟動時會自己 spin up embedded webhook（不需要另開 webhook tab）。
+
+跑 e2e 測試的順序：
+
+### Step 1 — 確保 cloudflared 還跑著
+
+```bash
+# 看 cloudflared PID
+ps aux | grep cloudflared | grep -v grep
+# 如果沒在跑，重起：
+nohup cloudflared tunnel --url http://localhost:3000 > /tmp/cf.log 2>&1 &
+sleep 8
+grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' /tmp/cf.log | head -1
+# → 把這個 URL 同步到 LINE Console webhook URL
+```
+
+### Step 2 — 關掉獨立 webhook server tab
+
+orchestrator 自己會啟 embedded webhook 在 port 3000。如果原本另開的 webhook server tab 還在，port 衝突會 fail。
+
+```bash
+# 找 standalone webhook process（如果有）
+ps aux | grep 'node skills/line_notify/webhook.js' | grep -v grep
+# 有就 kill：
+kill <PID>
+```
+
+### Step 3 — 跑 orchestrator with FORCE_LINE_HOLD
+
+```bash
+cd ~/gatherease-quote-agent
+set -a; source .env; set +a
+FORCE_LINE_HOLD=1 node orchestrator.js demo
+```
+
+`FORCE_LINE_HOLD=1` 讓 demo mode 也走真實 LINE push（不需要 NVIDIA_API_KEY）。
+
+預期行為：
+
+1. orchestrator 印 `✅ embedded webhook server started`
+2. 跑到第一個 HOLD（gate-pre-rfq 或 gate-1-secret-probe）
+3. orchestrator 印 `[line_notify] Pushed HOLD ... to LINE user U...`
+4. **你手機收到 NVIDIA-green flex message**，標題例如「📋 詢價單彙整」
+5. **按按鈕** → webhook tab 印 `[webhook] postback from ... hold=... choice=...`
+6. orchestrator 接著跑下一步
+7. 後續 HOLD 重複 4–6
+8. 跑完整個流程後 process exit
+
+### Step 4 — 演 gate-1 套機密偵測
+
+```bash
+FORCE_LINE_HOLD=1 node orchestrator.js demo --secret
+```
+
+`--secret` 會帶套機密客戶信件 → gate-1 偵測 → push LINE「🚨 客戶來信疑似套機密」flex message 給你。
+
+### 常見問題
+
+| 症狀 | 修法 |
+|---|---|
+| `Error: listen EADDRINUSE: address already in use :::3000` | standalone webhook server tab 還在，kill 它 |
+| 手機沒收到 flex message | LINE_BOSS_USER_ID 設錯，或 access token 過期 |
+| 按按鈕後 orchestrator 卡住 | webhook 不在同 process — 確認沒跑 standalone webhook、orchestrator 啟動印了 `embedded webhook server started` |
+| `HOLD ... timeout after 5 min` | 老闆 5 分鐘沒按按鈕，預設 timeout reject。改長：編 `skills/line_notify/index.js` 的 `HOLD_TIMEOUT_MS` |

@@ -56,12 +56,18 @@ async function audit(level, payload) {
 // ─────────────────────────────────────────────────────────────
 // HOLD 點 — 推 LINE 給老闆，等回覆
 // ─────────────────────────────────────────────────────────────
-async function holdForBoss({ gate, summary, options, mockReply, lineMessage }) {
+async function holdForBoss({ gate, summary, options, mockReply }) {
   await audit('HOLD', { gate, msg: summary, options });
 
-  // Real mode: 推 LINE flex message + button → 等 webhook 回覆
-  if (process.env.LINE_CHANNEL_ACCESS_TOKEN && process.env.NODE_ENV !== 'test' && !global.__DEMO_MODE) {
-    return await pushToLINEAndWait({ gate, message: lineMessage || summary, options });
+  // 走 LINE 的條件：有 access token + 非 test mode + (非 demo mode 或 FORCE_LINE_HOLD)
+  // FORCE_LINE_HOLD=1 → demo mode 也走 LINE（測 LINE 用，不需要 NVIDIA_API_KEY）
+  const forceLine = process.env.FORCE_LINE_HOLD === '1';
+  const useLine = process.env.LINE_CHANNEL_ACCESS_TOKEN &&
+                  process.env.NODE_ENV !== 'test' &&
+                  (!global.__DEMO_MODE || forceLine);
+
+  if (useLine) {
+    return await pushToLINEAndWait({ gate, summary, options });
   }
 
   // Demo / mock mode
@@ -177,7 +183,24 @@ async function main(opts = {}) {
   const demoMode = opts.demo || !process.env.NVIDIA_API_KEY;
   global.__DEMO_MODE = demoMode;
 
-  await audit('INFO', { stage: 'startup', msg: `Orchestrator started (mode: ${demoMode ? 'demo' : 'real'})` });
+  const forceLine = process.env.FORCE_LINE_HOLD === '1';
+  await audit('INFO', { stage: 'startup', msg: `Orchestrator started (mode: ${demoMode ? 'demo' : 'real'}${forceLine ? ', force-line=ON' : ''})` });
+
+  // 啟動 embedded webhook server（real mode 或 FORCE_LINE_HOLD）
+  // 重要：webhook 跟 orchestrator 必須在同一 process，pendingHolds Map 才共用
+  // 否則 webhook 收到 postback 找不到 orchestrator 註冊的 HOLD → orchestrator 永遠卡死
+  if ((!demoMode || forceLine) && process.env.LINE_CHANNEL_ACCESS_TOKEN) {
+    try {
+      const { startWebhook } = require('./skills/line_notify/webhook');
+      const app = startWebhook();
+      if (app) {
+        console.log('[orchestrator] ✅ embedded webhook server started — pendingHolds shared with orchestrator');
+      }
+    } catch (err) {
+      console.warn('[orchestrator] ⚠️  failed to start embedded webhook server:', err.message);
+      console.warn('[orchestrator] HOLD push 到 LINE 後會卡死沒人回 resolveHold');
+    }
+  }
 
   // ─── STEP 1: 收 Gmail 詢價（demo 模式直接 mock） ───
   await audit('INFO', { stage: 'step-1', msg: '收到客戶詢價 email：鴻碩電子 · Anti-Static Silicone Roller × 200 · 10 天交期' });
