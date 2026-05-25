@@ -1,0 +1,35 @@
+{
+  "name": "line_notify",
+  "version": "0.1.0",
+  "description": "把 orchestrator HOLD 點推 LINE 給老闆，老闆按 flex message 按鈕回覆 → webhook 接 → resolve HOLD promise",
+  "agent": "system",
+  "category": "OUTPUT",
+  "guardrails_triggered": ["gate-1-secret-probe", "gate-2-tradeoff-decision", "gate-3-final-quote-signoff"],
+  "inputs": {
+    "hold_id": {
+      "type": "string",
+      "description": "唯一識別 HOLD 事件，webhook 回來時對得到 orchestrator 哪個 await",
+      "required": true
+    },
+    "gate": { "type": "string", "required": true },
+    "summary": { "type": "string", "required": true, "description": "老闆看到的 flex message 內文" },
+    "options": {
+      "type": "array",
+      "description": "按鈕文字陣列，例 ['發詢價', '修改名單', '取消']",
+      "required": true
+    }
+  },
+  "outputs": {
+    "action": "string — 老闆的選擇對應的 action label",
+    "choice_index": "number — 0, 1, 2..."
+  },
+  "env_required": [
+    "LINE_CHANNEL_ACCESS_TOKEN",
+    "LINE_CHANNEL_SECRET",
+    "LINE_BOSS_USER_ID"
+  ],
+  "audit": {
+    "level": "INFO",
+    "tag": "line-hold-push"
+  }
+}

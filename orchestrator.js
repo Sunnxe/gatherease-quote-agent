@@ -29,6 +29,12 @@ const readDrawing       = require('./skills/read_drawing');
 const calcCost          = require('./skills/calc_cost');
 const sendRFQ           = require('./skills/send_rfq');
 const getHistoryQuote   = require('./skills/get_history_quote');
+// LINE skill 只有設了 token + 非 demo mode 才實際載入（避免 mock 模式 require @line/bot-sdk 失敗）
+let lineNotify = null;
+function getLineNotify() {
+  if (lineNotify) return lineNotify;
+  try { lineNotify = require('./skills/line_notify'); return lineNotify; } catch { return null; }
+}
 
 // ── 還沒寫成 skill 的，暫時 inline / 從 data 讀 ──
 async function loadJSON(p) { return JSON.parse(await fs.readFile(path.join(ROOT, p), 'utf8')); }
@@ -64,10 +70,27 @@ async function holdForBoss({ gate, summary, options, mockReply, lineMessage }) {
   return mockReply;
 }
 
-async function pushToLINEAndWait(/* args */) {
-  // TODO: 用 @line/bot-sdk 推 flex message + 等 webhook
-  // 此處留 stub，Day 3 接通 LINE 時實作
-  throw new Error('LINE real mode not yet implemented — Day 3 task');
+async function pushToLINEAndWait({ gate, summary, options }) {
+  const ln = getLineNotify();
+  if (!ln) throw new Error('skills/line_notify 載入失敗（可能 npm install @line/bot-sdk 還沒跑）');
+
+  const hold_id = `${gate}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const reply = await ln.pushHoldToBoss({ hold_id, gate, summary, options });
+  // reply = { action, choice_index, elapsed_seconds }
+  // 為了讓既有 mockReply shape 相容，補上 gate-specific 欄位
+  const enriched = { ...reply };
+  if (gate === 'gate-pre-rfq') {
+    enriched.supplier_ids = ['SUP-001', 'SUP-002', 'SUP-003'];   // demo 簡化
+  }
+  if (gate === 'gate-2-tradeoff-decision') {
+    enriched.supplier_id = ['SUP-002', 'SUP-003', null][reply.choice_index];
+    enriched.reason = reply.action;
+  }
+  if (gate === 'gate-3-final-quote-signoff') {
+    enriched.signed_at = new Date().toISOString();
+    enriched.signer = '老闆（LINE 簽核）';
+  }
+  return enriched;
 }
 
 // ─────────────────────────────────────────────────────────────
