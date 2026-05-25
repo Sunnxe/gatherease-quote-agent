@@ -30,13 +30,23 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
-# 清掉 nano 留的 Ctrl+X 字元（每次 source 都會 print error 很煩）
-sed -i 's/\x18//g' .env 2>/dev/null || true
+# 清掉所有不可見控制字元（保留 newline / tab），不然 source .env 會踩到 nano 留的 ^X
+# 用 perl 比 sed 對控制字元範圍更精確
+if command -v perl >/dev/null 2>&1; then
+  perl -i -pe 's/[\x00-\x08\x0B-\x1F\x7F]//g' .env
+else
+  tr -d '\000-\010\013-\037\177' < .env > /tmp/.env.clean && mv /tmp/.env.clean .env
+fi
 
+# source 失敗（譬如 .env 還是有怪字元）也不要因 set -e 中斷整支 script
+# 改用子 shell + grep 過濾，只保留 KEY=VALUE 形式的行
+TMP_ENV=$(mktemp)
+grep -E '^[A-Z_][A-Z0-9_]*=' .env > "$TMP_ENV" 2>/dev/null || true
 set -a
-# shellcheck disable=SC1091
-source .env
+# shellcheck disable=SC1090
+source "$TMP_ENV"
 set +a
+rm -f "$TMP_ENV"
 
 # ── Sanity check 必要金鑰 ──
 : "${LINE_CHANNEL_ACCESS_TOKEN:?❌ LINE_CHANNEL_ACCESS_TOKEN not set in .env}"

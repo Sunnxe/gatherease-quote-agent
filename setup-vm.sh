@@ -54,7 +54,7 @@ if [ -z "${NVIDIA_API_KEY:-}" ]; then
   hint "  ./setup-vm.sh"
   exit 1
 fi
-ok "NVIDIA_API_KEY 已設（前 12 字元：$(echo "$NVIDIA_API_KEY" | head -c 12)...）"
+ok "NVIDIA_API_KEY 已設（前 8 字元：${NVIDIA_API_KEY:0:8}...，後文不再 echo）"
 
 # 工具版本
 nemoclaw --version || { err "nemoclaw 不在 PATH"; exit 1; }
@@ -88,7 +88,7 @@ if echo "$EXISTING" | grep -qi "no sandbox"; then
     hint "v0.0.36 alpha 可能不完整支援非互動，請手動跑："
     hint "  nemoclaw onboard"
     hint "  → inference provider 選 NVIDIA Nemotron cloud"
-    hint "  → API key 貼上你的 NVIDIA_API_KEY: $NVIDIA_API_KEY"
+    hint "  → API key 從 \$NVIDIA_API_KEY 取（環境變數已設、為防洩漏不 echo）"
     hint "  → 沙盒名稱可以接受預設或自訂"
     hint "做完後重新跑此 script，它會偵測到沙盒存在並繼續"
     exit 1

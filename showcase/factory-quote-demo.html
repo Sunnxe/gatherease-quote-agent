@@ -173,26 +173,58 @@
   .card td:last-child{text-align:right;font-variant-numeric:tabular-nums;color:#111;font-weight:500}
   .card .tot{border-top:1px dashed #ccc;margin-top:5px;padding-top:5px;font-weight:700;color:#000}
 
-  /* guardrail confirm card (the killer moment) */
+  /* guardrail confirm card (the killer moment) — dramatic for demo recording */
   .gate{
-    background:#fff8e6;border:1.5px solid var(--hold);border-radius:14px;padding:12px;font-size:12px;color:#5a4500;
-    box-shadow:0 6px 20px rgba(255,176,32,0.25);
+    background:#fff8e6;border:2px solid var(--hold);border-radius:14px;padding:14px 14px 13px;font-size:13px;color:#5a4500;
+    box-shadow:0 10px 30px rgba(255,176,32,0.45), 0 0 0 4px rgba(255,176,32,0.12);
+    animation: gateEnter .35s cubic-bezier(.34,1.56,.64,1), gatePulse 1.8s ease-in-out 2;
+    position:relative;
   }
-  .gate.block{background:#fff0f0;border-color:var(--block);color:#7a1010;box-shadow:0 6px 20px rgba(255,59,59,0.25)}
-  .gate .gh{font-weight:800;font-size:12.5px;margin-bottom:6px;display:flex;align-items:center;gap:6px}
-  .gate .gd{line-height:1.55;margin-bottom:9px}
+  .gate.block{
+    background:#fff0f0;border-color:var(--block);color:#7a1010;
+    box-shadow:0 10px 30px rgba(255,59,59,0.5), 0 0 0 4px rgba(255,59,59,0.14);
+    animation: gateEnter .35s cubic-bezier(.34,1.56,.64,1), gateBlockPulse 1.8s ease-in-out 2;
+  }
+  @keyframes gateEnter{from{opacity:0;transform:translateY(20px) scale(.9)}to{opacity:1;transform:translateY(0) scale(1)}}
+  @keyframes gatePulse{
+    0%,100%{box-shadow:0 10px 30px rgba(255,176,32,0.45), 0 0 0 4px rgba(255,176,32,0.12)}
+    50%   {box-shadow:0 14px 44px rgba(255,176,32,0.7),  0 0 0 8px rgba(255,176,32,0.22)}
+  }
+  @keyframes gateBlockPulse{
+    0%,100%{box-shadow:0 10px 30px rgba(255,59,59,0.5),  0 0 0 4px rgba(255,59,59,0.14)}
+    50%   {box-shadow:0 14px 44px rgba(255,59,59,0.75), 0 0 0 8px rgba(255,59,59,0.26)}
+  }
+  .gate .gh{font-weight:900;font-size:14px;margin-bottom:7px;display:flex;align-items:center;gap:6px;letter-spacing:.2px}
+  .gate .gd{line-height:1.55;margin-bottom:10px;font-size:12.5px}
   .gate .gd b{color:#000}
   .gate .btns{display:flex;gap:7px;flex-wrap:wrap}
   .gate button{
-    flex:1;min-width:88px;border:none;padding:9px 8px;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;
-    font-family:inherit;transition:.15s;
+    flex:1;min-width:88px;border:none;padding:10px 8px;border-radius:9px;font-size:13px;font-weight:800;cursor:pointer;
+    font-family:inherit;transition:.15s;letter-spacing:.3px;
   }
-  .gate .ok{background:var(--nv-green);color:#0a1400}
-  .gate .ok:hover{background:var(--nv-green-bright)}
+  .gate .ok{background:var(--nv-green);color:#0a1400;box-shadow:0 4px 14px rgba(118,185,0,0.4)}
+  .gate .ok:hover{background:var(--nv-green-bright);transform:translateY(-1px)}
   .gate .no{background:#eee;color:#666}
   .gate .no:hover{background:#ddd}
-  .gate.done{opacity:.6;filter:saturate(.5)}
+  .gate.done{opacity:.55;filter:saturate(.5);animation:none}
   .gate.done button{pointer-events:none}
+
+  /* governance flash — short red/amber screen-edge glow when gate fires */
+  body.gate-flash::before{
+    background:
+      radial-gradient(ellipse 60% 50% at 20% 0%, rgba(118,185,0,0.08), transparent 60%),
+      radial-gradient(ellipse 50% 40% at 90% 100%, rgba(118,185,0,0.05), transparent 60%),
+      radial-gradient(ellipse 80% 60% at 50% 50%, rgba(255,176,32,0.18), transparent 70%);
+    animation: flashFade 1.2s ease-out forwards;
+  }
+  body.gate-flash-block::before{
+    background:
+      radial-gradient(ellipse 60% 50% at 20% 0%, rgba(118,185,0,0.08), transparent 60%),
+      radial-gradient(ellipse 50% 40% at 90% 100%, rgba(118,185,0,0.05), transparent 60%),
+      radial-gradient(ellipse 80% 60% at 50% 50%, rgba(255,59,59,0.22), transparent 70%);
+    animation: flashFade 1.4s ease-out forwards;
+  }
+  @keyframes flashFade{from{opacity:1}to{opacity:.3}}
 
   .price-input{display:flex;gap:6px;margin-top:8px}
   .price-input input{flex:1;border:1.5px solid var(--nv-green);border-radius:9px;padding:8px;font-size:13px;font-family:inherit;font-weight:700;color:#111}
@@ -321,7 +353,17 @@
           <div style="font-size:18px;color:#9fb4d0">⋮</div>
         </div>
         <div class="chat" id="chat">
-          <div class="empty" id="emptyChat">按右側「▶ 播放 Demo」<br>看 AI 在 Gmail、讀圖、LINE、系統間替老闆跑完整張報價</div>
+          <div class="empty" id="emptyChat">
+            <div style="font-size:34px;line-height:1;margin-bottom:14px;">📱</div>
+            <div style="font-weight:700;color:#3a4250;font-size:13px;margin-bottom:6px;">桐聚 AI 報價助手</div>
+            <div style="color:#5a6878;font-size:11.5px;line-height:1.5;margin-bottom:14px;">
+              客戶詢價進來 → 工程判讀 → 多廠商比價 → 老闆簽核 → 加密報價送出
+            </div>
+            <div style="background:rgba(118,185,0,0.18);border:1px dashed rgba(118,185,0,0.5);border-radius:9px;padding:8px 11px;color:#3a6a00;font-size:11px;font-weight:600;line-height:1.5;">
+              ⏱ 老闆人工 ~9 hr<br>⚡ AI 自動 ~30 s
+            </div>
+            <div style="margin-top:18px;color:#9aacbf;font-size:10.5px;">按右側「▶ 播放 Demo」開始</div>
+          </div>
         </div>
 
         <!-- supplier email overlay (slides over when agent goes outbound) -->
@@ -404,7 +446,7 @@
           <div class="item"><div class="num g" id="sAllow">0</div><div class="lb">放行 ALLOW</div></div>
           <div class="item"><div class="num r" id="sBlock">0</div><div class="lb">攔截 BLOCK</div></div>
           <div class="item"><div class="num y" id="sHold">0</div><div class="lb">人類確認 HOLD</div></div>
-          <div class="item big"><div class="num" id="sRatio">0%</div><div class="lb">工具呼叫經 NemoClaw 治理</div></div>
+          <div class="item big"><div class="num" id="sRatio">0%</div><div class="lb">人類/守門介入比例 (HOLD+BLOCK)</div></div>
         </div>
       </div>
     </div>
@@ -508,12 +550,11 @@ function updateScore(){
   document.getElementById('sAllow').textContent=counts.allow;
   document.getElementById('sBlock').textContent=counts.block;
   document.getElementById('sHold').textContent=counts.hold;
-  const governed = counts.block+counts.hold;
-  const ratio = counts.total? Math.round((counts.allow+governed)/counts.total*100):0;
-  // every logged event passed through NemoClaw, so ratio reflects governed share of meaningful calls
-  const meaningful = counts.total;
-  const pct = counts.total? Math.round(((counts.block+counts.hold)/counts.total)*100):0;
-  document.getElementById('sRatio').textContent = counts.total? '100%':'0%';
+  // 「治理介入比例」= 真實 hold/block 攔下的比例（非 allow）
+  // 跑完 demo 全流程預期約 30-40%、表示 ~1/3 的 agent 動作需要老闆把關
+  const intervened = counts.block + counts.hold;
+  const pct = counts.total ? Math.round((intervened / counts.total) * 100) : 0;
+  document.getElementById('sRatio').textContent = pct + '%';
 }
 
 // chat helpers
@@ -640,6 +681,13 @@ function sysSaved(){
 function gate({block, title, desc, okLabel, noLabel, priceInput}){
   return new Promise(resolve=>{
     clearEmpty();
+    // screen-edge flash for video dramatic effect (1.2s amber / 1.4s red)
+    const flashClass = block ? 'gate-flash-block' : 'gate-flash';
+    document.body.classList.remove('gate-flash', 'gate-flash-block');
+    void document.body.offsetWidth;   // force reflow so re-trigger works
+    document.body.classList.add(flashClass);
+    setTimeout(()=>document.body.classList.remove(flashClass), block ? 1400 : 1200);
+
     const m=document.createElement('div');m.className='msg bot';
     const inner=document.createElement('div');
     inner.className='gate'+(block?' block':'');
@@ -981,7 +1029,7 @@ async function runDemo(){
 }
 
 function resetDemo(){
-  chat.innerHTML='<div class="empty" id="emptyChat">按「▶ 播放 Demo」<br>看 AI 在 Gmail、讀圖、LINE、系統間替老闆跑完整張報價</div>';
+  chat.innerHTML='<div class="empty" id="emptyChat"><div style="font-size:34px;line-height:1;margin-bottom:14px;">📱</div><div style="font-weight:700;color:#3a4250;font-size:13px;margin-bottom:6px;">桐聚 AI 報價助手</div><div style="color:#5a6878;font-size:11.5px;line-height:1.5;margin-bottom:14px;">客戶詢價進來 → 工程判讀 → 多廠商比價 → 老闆簽核 → 加密報價送出</div><div style="background:rgba(118,185,0,0.18);border:1px dashed rgba(118,185,0,0.5);border-radius:9px;padding:8px 11px;color:#3a6a00;font-size:11px;font-weight:600;line-height:1.5;">⏱ 老闆人工 ~9 hr<br>⚡ AI 自動 ~30 s</div><div style="margin-top:18px;color:#9aacbf;font-size:10.5px;">按「▶ 播放 Demo」開始</div></div>';
   logEl.innerHTML='<div class="empty">尚未有治理事件</div>';
   hideSupplier(); clearSupplier();
   hideEng(); clearEng(); hideSys(); clearSys(); hideLabel();

@@ -124,13 +124,17 @@ LINE_BOSS_USER_ID=U...          # 第一次加好友後從 webhook trace 抓
    ```
 4. 複製 `U` 開頭那 33 字 → 寫進 .env：
    ```bash
-   read -p "LINE_BOSS_USER_ID: " UID
+   # ⚠️ 不要用 UID 變數名 — UID 在 bash 是 readonly special variable
+   # （當前 user 的 user ID，ubuntu user 通常是 1000）
+   # read 對 UID 不會成功，$UID 會留 1000 → .env 寫成 LINE_BOSS_USER_ID=1000
+   # → LINE API 拒收 → 400
+   read -p "LINE_BOSS_USER_ID: " LBUID
    if grep -q '^LINE_BOSS_USER_ID=' .env; then
-     sed -i "s|^LINE_BOSS_USER_ID=.*|LINE_BOSS_USER_ID=$UID|" .env
+     sed -i "s|^LINE_BOSS_USER_ID=.*|LINE_BOSS_USER_ID=$LBUID|" .env
    else
-     echo "LINE_BOSS_USER_ID=$UID" >> .env
+     echo "LINE_BOSS_USER_ID=$LBUID" >> .env
    fi
-   unset UID
+   unset LBUID
    ```
 
 設一次就好，userId 不會變（除非你封鎖再加回來會變新的）。
