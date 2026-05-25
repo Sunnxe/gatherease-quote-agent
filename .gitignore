@@ -1,0 +1,47 @@
+# ─── 金鑰與憑證（絕對不能進 git）───
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+credentials.json
+token.json
+service-account.json
+
+# OpenClaw 本機設定（含金鑰）
+openclaw.json
+~/.openclaw/openclaw.json
+.openclaw/
+
+# ─── Node ───
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+.pnpm-store/
+
+# ─── 稽核日誌（local-only；evidence 用截圖代替）───
+logs/*
+!logs/.gitkeep
+
+# ─── 系統 ───
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# ─── Build artifacts ───
+dist/
+build/
+*.tsbuildinfo
+
+# ─── IDE ───
+.vscode/
+.idea/
+*.iml
+
+# ─── 暫存 ───
+*.tmp
+*.cache
+.cache/
