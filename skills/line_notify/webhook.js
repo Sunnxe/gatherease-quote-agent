@@ -34,18 +34,70 @@ function startWebhook(port = process.env.LINE_WEBHOOK_PORT || 3000) {
 
   const app = express();
 
+  // ── DEBUG trace: 印出每個進來的 request（包含 LINE 自己的 Verify） ──
+  app.use((req, res, next) => {
+    const sig = req.headers['x-line-signature'];
+    const t0 = Date.now();
+    console.log(`[trace] ${new Date().toISOString()} ${req.method} ${req.url} sig=${sig ? sig.slice(0,12)+'...' : '(none)'} ua=${req.headers['user-agent']}`);
+    res.on('finish', () => {
+      console.log(`[trace] ↳ ${req.method} ${req.url} responded ${res.statusCode} in ${Date.now()-t0}ms`);
+    });
+    res.on('close', () => {
+      if (!res.writableEnded) {
+        console.log(`[trace] ↳ ${req.method} ${req.url} client closed connection after ${Date.now()-t0}ms (no response sent)`);
+      }
+    });
+    next();
+  });
+
   // 健康檢查（給 LINE 設定時驗證 webhook URL 用）
   app.get('/health', (req, res) => res.send('OK'));
   app.get('/webhook/line', (req, res) => res.send('LINE webhook ready (use POST)'));
 
+  // ── 包一層 line.middleware 看它有沒有卡住 ──
+  const lineMw = line.middleware(lineConfig);
+  const wrappedLineMw = (req, res, next) => {
+    console.log(`[trace] entering line.middleware...`);
+    let wentNext = false;
+    const wrappedNext = (err) => {
+      wentNext = true;
+      if (err) {
+        console.log(`[trace] line.middleware called next(err): ${err.name} - ${err.message}`);
+      } else {
+        console.log(`[trace] line.middleware called next() OK (signature valid)`);
+      }
+      next(err);
+    };
+    setTimeout(() => {
+      if (!wentNext) console.log(`[trace] ⚠️  line.middleware did NOT call next() within 3s — IT'S STUCK`);
+    }, 3000);
+    lineMw(req, res, wrappedNext);
+  };
+
   // LINE webhook（POST + 簽章驗證）
-  app.post('/webhook/line', line.middleware(lineConfig), (req, res) => {
+  app.post('/webhook/line', wrappedLineMw, (req, res) => {
+    console.log(`[trace] handler reached, events count = ${(req.body.events || []).length}`);
     Promise.all((req.body.events || []).map(handleEvent))
-      .then(() => res.status(200).end())
+      .then(() => {
+        console.log(`[trace] handler Promise.all done, sending 200`);
+        res.status(200).end();
+      })
       .catch(err => {
         console.error('[webhook] handleEvent error:', err);
         res.status(500).end();
       });
+  });
+
+  // ── Express 預設 error handler 也加 log（line.middleware 簽章失敗會走這裡） ──
+  app.use((err, req, res, next) => {
+    console.log(`[trace] error handler caught: ${err.name} - ${err.message}`);
+    if (err.name === 'SignatureValidationFailed') {
+      return res.status(401).end();
+    }
+    if (err.name === 'JSONParseError') {
+      return res.status(400).end();
+    }
+    res.status(500).end();
   });
 
   app.listen(port, () => {
