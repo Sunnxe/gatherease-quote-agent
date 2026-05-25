@@ -1,0 +1,99 @@
+{
+  "_comment": "合成資料 / synthetic data — 3 家表面處理代工廠，名稱與數字皆為虛構",
+  "suppliers": [
+    {
+      "id": "SUP-001",
+      "name": "全鋼表處",
+      "category": "surface-treatment-vendor",
+      "contact": {
+        "name": "陳廠長",
+        "email": "supplier-all-steel@test-gatherease.example",
+        "phone": "+886-4-2299-XXXX"
+      },
+      "pricing": {
+        "unit_price_twd": 320,
+        "currency": "TWD",
+        "moq": 50
+      },
+      "lead_time_days": 9,
+      "quality": {
+        "yield_rate_pct": 95,
+        "certifications": [],
+        "anti_static_capable": false,
+        "history_defect_rate_pct": 4.2
+      },
+      "history_orders_count": 18,
+      "notes": "最便宜但無抗靜電認證、交期最長。用在預算敏感、無認證需求的單。"
+    },
+    {
+      "id": "SUP-002",
+      "name": "永鎵精密表面",
+      "category": "surface-treatment-vendor",
+      "contact": {
+        "name": "黃經理",
+        "email": "supplier-yongjia@test-gatherease.example",
+        "phone": "+886-4-2362-XXXX"
+      },
+      "pricing": {
+        "unit_price_twd": 420,
+        "currency": "TWD",
+        "moq": 30
+      },
+      "lead_time_days": 4,
+      "quality": {
+        "yield_rate_pct": 99,
+        "certifications": ["ISO 9001", "抗靜電 ESD-S20.20"],
+        "anti_static_capable": true,
+        "history_defect_rate_pct": 0.8
+      },
+      "history_orders_count": 42,
+      "notes": "貴 18% 但交期最短 + 唯一抗靜電認證。鴻碩電子這種 PCB 客戶必選。"
+    },
+    {
+      "id": "SUP-003",
+      "name": "新鎏鍍工業",
+      "category": "surface-treatment-vendor",
+      "contact": {
+        "name": "李課長",
+        "email": "supplier-xinliu@test-gatherease.example",
+        "phone": "+886-4-2530-XXXX"
+      },
+      "pricing": {
+        "unit_price_twd": 370,
+        "currency": "TWD",
+        "moq": 40
+      },
+      "lead_time_days": 7,
+      "quality": {
+        "yield_rate_pct": 97,
+        "certifications": ["ISO 9001"],
+        "anti_static_capable": false,
+        "history_defect_rate_pct": 2.1
+      },
+      "history_orders_count": 27,
+      "notes": "中價中速、品質穩。一般訂單常用、預設選項。"
+    },
+    {
+      "id": "SUP-IRON-001",
+      "name": "金鋼鐵輪製造",
+      "category": "steel-wheel-supplier",
+      "contact": {
+        "name": "張先生",
+        "email": "supplier-jingang@test-gatherease.example",
+        "phone": "+886-4-2418-XXXX"
+      },
+      "pricing": {
+        "unit_price_twd": 650,
+        "currency": "TWD",
+        "moq": 100
+      },
+      "lead_time_days": 3,
+      "quality": {
+        "yield_rate_pct": 98,
+        "certifications": ["ISO 9001"]
+      },
+      "history_orders_count": 156,
+      "notes": "S45C 鐵輪本體長期供應商，價格穩定。"
+    }
+  ]
+}

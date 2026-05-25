@@ -1,0 +1,28 @@
+part_name,base_unit_cost,lead_time_days,sourcing_type
+Roller Core (Shaft),,,Vendor
+Rubber Compound (Cover),5.00,2,InHouse
+PCB Lamination Compound,5.20,2,InHouse
+Printing Rubber Compound,5.10,2,InHouse
+Flexo Rubber Compound,5.15,2,InHouse
+Gravure Rubber Compound,5.15,2,InHouse
+High-Viscosity Compound,5.30,3,InHouse
+Anti-Static Silicone Cover,6.00,4,InHouse
+ESD Rubber Compound,6.50,4,InHouse
+High-Tension PU Cover,7.50,5,InHouse
+VITON Rubber Compound,9.00,5,InHouse
+Textile Rubber Compound,4.50,2,InHouse
+IIR Rubber Cover,5.00,2,InHouse
+Synthetic Dust Cover,5.00,2,InHouse
+PU Cover Compound,6.00,3,InHouse
+Custom Rubber Compound,5.00,3,InHouse
+NBR Rubber Compound,5.00,2,InHouse
+Adhesive Roller Cover,6.00,3,InHouse
+Arc Lamination Rubber,6.50,4,InHouse
+Glass Polishing Rubber,6.00,4,InHouse
+Conveyor Silicone Belt,8.00,5,InHouse
+Food-Grade Silicone Cover,7.50,5,InHouse
+Adhesive (Bonding Agent),0.01,1,InHouse
+End Caps (if applicable),0.50,3,InHouse
+Bearings,2.00,3,InHouse
+Surface Finish (Grinding),80.00,2,InHouse
+Packaging/Protection,10.00,1,InHouse
