@@ -31,8 +31,8 @@
       }
     },
     "aliases": {
-      "nano": "nvidia/nvidia/nemotron-3-nano-30b",
-      "super": "nvidia/nvidia/nemotron-3-super-120b-a12b"
+      "nano": "nvidia/nemotron-3-nano-30b",
+      "super": "nvidia/nemotron-3-super-120b-a12b"
     }
   },
 

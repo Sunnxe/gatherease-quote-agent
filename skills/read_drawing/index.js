@@ -24,7 +24,9 @@ const ROOT = path.resolve(HERE, '..', '..');
 const KNOWLEDGE_PATH = path.join(HERE, 'knowledge.txt');
 
 const NEMOTRON_BASE = 'https://integrate.api.nvidia.com/v1';
-const NEMOTRON_SUPER_MODEL = 'nvidia/nvidia/nemotron-3-super-120b-a12b';
+// 注意：model name 只有一個 nvidia/ —— 之前寫成 nvidia/nvidia/ 會回 404 page not found
+// 用 `nemoclaw inference get --json` 確認當前 NemoClaw routing 到的 model 是這個
+const NEMOTRON_SUPER_MODEL = 'nvidia/nemotron-3-super-120b-a12b';
 
 let _knowledgeCache = null;
 async function loadKnowledge() {
