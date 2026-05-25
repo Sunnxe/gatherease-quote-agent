@@ -10,7 +10,7 @@
 | `file_read` | 讀 workspace 內檔案（data/*.csv / *.json） |
 | `file_write` | 寫檔案（譬如 audit log / pending hold state） |
 
-## 桐聚 workspace skill（5 個）
+## 桐聚 workspace skill（6 個）
 
 每個 skill 都在 `{baseDir}/skills/<name>/`，內含 `SKILL.md` (我的指引) + `cli.sh` (執行入口) + `impl.js` (JS 邏輯) + 可能的 `data/`。
 
@@ -21,6 +21,7 @@
 | `calc_cost` | 依 BOM + 26 行 cost_data 表算單位成本 + 建議報價 | `exec bash skills/calc_cost/cli.sh <json-args>` |
 | `compare_suppliers` | 三家代工廠價/期/質多維比對 | `exec bash skills/compare_suppliers/cli.sh <json-args>` |
 | `line_notify` | push flex message 給老闆 LINE，**等 webhook 收到 postback** 才繼續 | `exec bash skills/line_notify/cli.sh <json-args>` |
+| `send_email` | Gmail SMTP 真寄信 (step 7 寄 RFQ × 3、step 13 寄報價單給客戶)。NemoClaw gmail-smtp.yaml 治理 egress 在這裡擋未授權 host | `exec bash skills/send_email/cli.sh <json-args>` |
 
 ## 規矩
 

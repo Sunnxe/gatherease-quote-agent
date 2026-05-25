@@ -18,13 +18,13 @@ GatherEase 報價助手 operating manual。每個 session 開始我會讀這份�
 | 4 | 找歷史相似單 | `exec bash skills/get_history_quote/cli.sh '{"new_order":{...},"k":5}'` → 取 top-5 | step 3 (要 product_name + spec) |
 | 5 | 估底價 | `exec bash skills/calc_cost/cli.sh '{"product_id":"...","bom":[...],"qty":N,"surface_treatment_supplier_id":null}'` | step 3 (要 BOM) |
 | 6 | **GATE ②** 詢價單彙整推老闆 | `exec bash skills/line_notify/cli.sh '{"gate":"gate-pre-rfq","summary":"...","options":["發詢價","修改名單","取消"]}'` → **阻塞等回覆** | step 3-5 (要先有產品 + 歷史 + 底價) |
-| 7 | 發詢價 | 老闆選「發詢價」後 → send_rfq（demo mock，不真寄） | step 6 (老闆批准) |
+| 7 | 發詢價 (真寄) | 老闆選「發詢價」後，對 3 家代工廠各 `exec bash skills/send_email/cli.sh '{"to":"sup001@...","subject":"【RFQ】...","body":"..."}'` | step 6 (老闆批准) |
 | 8 | 快轉 1 天收回信 | demo mock：直接讀 data/suppliers.json 三家報價 | step 7 |
 | 9 | 三家比價 | `exec bash skills/compare_suppliers/cli.sh '{...}'` | step 8 (要 3 家回信) |
 | 10 | **GATE ③** 多維權衡推老闆 | `exec bash skills/line_notify/cli.sh '{"gate":"gate-2-tradeoff-decision","summary":"...","options":["選永鎵","選新鎏鍍 + 延 3 天","取消"]}'` | step 9 |
 | 11 | 重算最終成本 | `calc_cost` 帶老闆選的代工廠 ID 重算 | step 10 (要老闆選的 supplier) |
 | 12 | **GATE ④** 最終簽核推老闆 | `exec bash skills/line_notify/cli.sh '{"gate":"gate-3-final-quote-signoff","summary":"...","options":["簽核並寄出","修改價格","取消"]}'` | step 11 |
-| 13 | 簽完寄出 | 老闆按「簽核並寄出」後 → encrypt_quote + send_quote + archive_quote（都 mock）→ 跟 user 講「已寄出」 | step 12 (老闆簽) |
+| 13 | 簽完寄出 (真寄) | 老闆按「簽核並寄出」後 → `exec bash skills/send_email/cli.sh '{"to":"customer@...","subject":"【報價單】...","body":"產品/數量/單價/總額/交期/代工廠"}'` → 跟 user 講「已寄出」 | step 12 (老闆簽) |
 
 ## 5 道 NemoClaw 守門對應
 
