@@ -1,0 +1,23 @@
+# GatherEase × NemoClaw — Gmail IMAP egress preset
+#
+# 套用：nemoclaw <sandbox> policy-add --from-file ./presets/gmail-imap.yaml --yes
+#
+# 用途：收代工廠 RFQ 回應（解析 PDF 報價單）、收客戶詢價信（解析品項/數量/交期）。
+# 注意：務必用「測試 Gmail 帳號」，不要主帳號（自動收發會被 Google 濫用偵測標記）。
+
+preset:
+  name: gmail-imap
+  description: "Gmail IMAP for receiving supplier RFQ responses (test account only)"
+
+network_policies:
+  gmail-imap:
+    name: gmail-imap
+    endpoints:
+      # IMAPS
+      - host: imap.gmail.com
+        port: 993
+        tls: skip
+        access: full
+    binaries:
+      - { path: /usr/local/bin/node }
+      - { path: /usr/bin/node }

@@ -1,0 +1,37 @@
+# GatherEase × NemoClaw — LINE Messaging API egress preset
+#
+# 套用：nemoclaw <sandbox> policy-add --from-file ./presets/line-messaging.yaml --dry-run
+# 確認沒問題後：       nemoclaw <sandbox> policy-add --from-file ./presets/line-messaging.yaml --yes
+#
+# Schema 來源：https://docs.nvidia.com/nemoclaw/latest/network-policy/customize-network-policy.html
+#
+# 用途：讓 sandbox 內的 orchestrator 推 flex message 給老闆（gate-1/2/3 守門）、
+#       接 webhook postback。LINE 是台灣老闆日常用工具、demo 演示介面重點。
+
+preset:
+  name: line-messaging
+  description: "LINE Messaging API for boss approval flex messages and webhook callbacks"
+
+network_policies:
+  line-messaging:
+    name: line-messaging
+    endpoints:
+      # 主 API：push/reply/multicast/profile
+      - host: api.line.me
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow: { method: POST, path: "/v2/bot/**" }
+          - allow: { method: GET,  path: "/v2/bot/**" }
+      # 內容 API：圖片、影片、檔案下載
+      - host: api-data.line.me
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow: { method: GET,  path: "/v2/bot/**" }
+          - allow: { method: POST, path: "/v2/bot/**" }
+    binaries:
+      - { path: /usr/local/bin/node }
+      - { path: /usr/bin/node }

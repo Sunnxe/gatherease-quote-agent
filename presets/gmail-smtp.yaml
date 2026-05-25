@@ -1,0 +1,28 @@
+# GatherEase × NemoClaw — Gmail SMTP egress preset
+#
+# 套用：nemoclaw <sandbox> policy-add --from-file ./presets/gmail-smtp.yaml --yes
+#
+# 用途：agent 對外發信給代工廠（詢價＋圖面）、寄加密報價單給客戶。
+# 注意：SMTP 不是 REST，所以用 tls: skip + access: full（raw TCP）。
+
+preset:
+  name: gmail-smtp
+  description: "Gmail SMTP for sending RFQ to suppliers and encrypted quotes to customers"
+
+network_policies:
+  gmail-smtp:
+    name: gmail-smtp
+    endpoints:
+      # SMTP submission with STARTTLS
+      - host: smtp.gmail.com
+        port: 587
+        tls: skip
+        access: full
+      # SMTPS (implicit TLS)
+      - host: smtp.gmail.com
+        port: 465
+        tls: skip
+        access: full
+    binaries:
+      - { path: /usr/local/bin/node }
+      - { path: /usr/bin/node }
