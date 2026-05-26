@@ -161,14 +161,19 @@ async function pollOutbox() {
 // ───────────────────────────────────────────────────────
 const lastSeenUids = new Set();
 
+// inbox_watch skill 已 npm install 過 imapflow + mailparser + pdf-parse，
+// email-bridge 重用那個 node_modules（避免 repo root 再裝一次）
+const INBOX_WATCH_NM = path.join(__dirname, '..', 'workspace', 'skills', 'inbox_watch', 'node_modules');
+
 async function pollInbox() {
-  let ImapFlow, simpleParser, pdfParse;
+  let ImapFlow, simpleParser;
   try {
-    ImapFlow = require('imapflow').ImapFlow;
-    simpleParser = require('mailparser').simpleParser;
-    try { pdfParse = require('pdf-parse'); } catch { pdfParse = null; }
+    ImapFlow = require(path.join(INBOX_WATCH_NM, 'imapflow')).ImapFlow;
+    simpleParser = require(path.join(INBOX_WATCH_NM, 'mailparser')).simpleParser;
   } catch (e) {
-    log('inbox', `❌ require failed: ${e.message}. cd workspace/skills/inbox_watch && npm install`);
+    log('inbox', `❌ require failed: ${e.message}`);
+    log('inbox', `  expected at: ${INBOX_WATCH_NM}`);
+    log('inbox', `  fix: cd workspace/skills/inbox_watch && bash cli.sh  # 第一次跑會 lazy npm install`);
     return;
   }
 
