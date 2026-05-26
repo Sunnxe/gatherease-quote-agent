@@ -8,7 +8,8 @@
 # 這個 script 改成把 skill 直接寫進 sandbox 的
 # /sandbox/.openclaw/workspace/skills/<name>/，agent 才看得到。
 #
-# 用 base64 + nemoclaw exec 寫檔（避開 newline / quote 問題）。
+# v3 (2026-05-26)：全部改用 stdin pipe 傳檔，繞過 nemoclaw grpc 32KB arg 限制
+#                 (之前 AGENTS.md 變大 24KB+ 寫不進去)。
 #
 
 set -euo pipefail
@@ -20,15 +21,60 @@ SANDBOX_SKILLS="$SANDBOX_WS/skills"
 
 SKILLS=(order_store read_drawing get_history_quote check_schedule calc_cost compare_suppliers line_notify send_email generate_quote_pdf inbox_watch)
 
+# _lib 是 shared helper (order_writeback.js)，每個 skill 都 require 它
+LIB_DIR_NAME="_lib"
+
+# ─── 核心 helper：用 stdin pipe 傳 base64 寫進 sandbox ───
+# 之前用 `bash -c "echo '$B64' | base64 -d > ..."` 把 B64 包成 arg → grpc 32KB 上限。
+# 改成 `printf '%s' "$B64" | nemoclaw exec -- bash -c "base64 -d > ..."` → B64 走 stdin、arg 只剩 30 bytes。
+deploy_file_to_sandbox() {
+  local src_file="$1"
+  local dest_path="$2"
+  if [ ! -f "$src_file" ]; then
+    echo "  ⚠️  source missing: $src_file"
+    return 1
+  fi
+  local size
+  size=$(wc -c < "$src_file")
+  # 跳超大檔（>100KB ARG_MAX 限制，printf 本身也會炸）
+  if [ "$size" -gt 102400 ]; then
+    echo "  ⊘ $(basename "$src_file") ($size bytes) — SKIP (>100KB)"
+    return 0
+  fi
+  local b64
+  b64=$(base64 -w0 "$src_file" 2>/dev/null || base64 "$src_file" | tr -d '\n')
+  # 確保 dest dir 存在
+  local dest_dir
+  dest_dir=$(dirname "$dest_path")
+  nemoclaw "$SANDBOX" exec -- mkdir -p "$dest_dir" < /dev/null > /dev/null
+  # stdin pipe — B64 不當 arg，沒有 32KB 限制
+  printf '%s' "$b64" | nemoclaw "$SANDBOX" exec -- bash -c "base64 -d > '$dest_path'" > /dev/null
+}
+
 echo "▶ Sanity check"
 nemoclaw "$SANDBOX" connect --probe-only
 echo ""
 
-echo "▶ 確保 sandbox workspace/skills/ dir 存在"
-nemoclaw "$SANDBOX" exec -- mkdir -p "$SANDBOX_SKILLS"
+echo "▶ 確保 sandbox workspace/skills/ + _lib dir 存在"
+nemoclaw "$SANDBOX" exec -- mkdir -p "$SANDBOX_SKILLS" "$SANDBOX_SKILLS/$LIB_DIR_NAME" < /dev/null
 echo ""
 
-# 把每個 skill dir 內的 file 一個一個寫到 sandbox workspace
+# ─── Deploy _lib first（skill 都 require）───
+echo "▶ Deploying shared $LIB_DIR_NAME/"
+if [ -d "workspace/skills/$LIB_DIR_NAME" ]; then
+  while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    rel=$(basename "$f")
+    size=$(wc -c < "$f")
+    echo "  → $LIB_DIR_NAME/$rel ($size bytes)"
+    deploy_file_to_sandbox "$f" "$SANDBOX_SKILLS/$LIB_DIR_NAME/$rel"
+  done < <(find "workspace/skills/$LIB_DIR_NAME" -type f -name '*.js')
+else
+  echo "  ⚠️  workspace/skills/$LIB_DIR_NAME 不存在，skip"
+fi
+echo ""
+
+# ─── Deploy 每個 skill ───
 for skill in "${SKILLS[@]}"; do
   local_dir="workspace/skills/$skill"
   remote_dir="$SANDBOX_SKILLS/$skill"
@@ -39,9 +85,8 @@ for skill in "${SKILLS[@]}"; do
   fi
 
   echo "▶ Deploying $skill → $remote_dir"
-  nemoclaw "$SANDBOX" exec -- mkdir -p "$remote_dir"
+  nemoclaw "$SANDBOX" exec -- mkdir -p "$remote_dir" < /dev/null
 
-  # 找所有 source files（不要 node_modules / package*.json，那些 cli.sh lazy install）
   while IFS= read -r f; do
     rel="${f#$local_dir/}"
     case "$rel" in
@@ -49,48 +94,34 @@ for skill in "${SKILLS[@]}"; do
     esac
     if [ -f "$f" ]; then
       size=$(wc -c < "$f")
-      # 大檔 (>100KB) 跳過 — nemoclaw exec arg 超過 ARG_MAX (~128KB) 會
-      # "Argument list too long" 直接 fail，整個 deploy 中斷。
-      # 大檔通常是 data/*.csv（10000 筆歷史訂單、BOM）— 早期 deploy 過後不需要再傳。
       if [ "$size" -gt 102400 ]; then
-        echo "  ⊘ $rel ($size bytes) — SKIP (>100KB, ARG_MAX limit)"
+        echo "  ⊘ $rel ($size bytes) — SKIP (>100KB)"
         continue
       fi
-      # 確保目標子目錄存在
-      parent=$(dirname "$rel")
-      if [ "$parent" != "." ]; then
-        nemoclaw "$SANDBOX" exec -- mkdir -p "$remote_dir/$parent" < /dev/null
-      fi
-      B64=$(base64 -w0 "$f" 2>/dev/null || base64 "$f" | tr -d '\n')
       echo "  → $rel ($size bytes)"
-      # ⚠️ < /dev/null 必加：while read 用 process substitution 餵 file list 進 stdin，
-      #   nemoclaw exec 預設會讀 parent stdin → 吃掉剩下的 filenames → 只 deploy 一個檔就 EOF。
-      nemoclaw "$SANDBOX" exec -- bash -c "echo '$B64' | base64 -d > '$remote_dir/$rel'" < /dev/null
+      deploy_file_to_sandbox "$f" "$remote_dir/$rel"
     fi
   done < <(find "$local_dir" -type f)
 
   # cli.sh 要 executable
-  nemoclaw "$SANDBOX" exec -- chmod +x "$remote_dir/cli.sh" < /dev/null
+  nemoclaw "$SANDBOX" exec -- chmod +x "$remote_dir/cli.sh" < /dev/null 2>/dev/null || true
 done
 
+# ─── Deploy workspace md files（AGENTS.md 等，可能很大）───
 echo ""
-echo "▶ 也把 workspace 5 個 .md + .env 寫進 sandbox"
+echo "▶ Deploy workspace/*.md → sandbox（stdin pipe 不卡 32KB 上限）"
 for md in AGENTS.md SOUL.md IDENTITY.md USER.md TOOLS.md HEARTBEAT.md; do
   if [ -f "workspace/$md" ]; then
-    B64=$(base64 -w0 "workspace/$md" 2>/dev/null || base64 "workspace/$md" | tr -d '\n')
-    echo "  → $SANDBOX_WS/$md"
-    nemoclaw "$SANDBOX" exec -- bash -c "echo '$B64' | base64 -d > '$SANDBOX_WS/$md'"
+    size=$(wc -c < "workspace/$md")
+    echo "  → $SANDBOX_WS/$md ($size bytes)"
+    deploy_file_to_sandbox "workspace/$md" "$SANDBOX_WS/$md"
   fi
 done
 
+# ─── Deploy host data/ → sandbox workspace/data/ ───
 echo ""
-echo "▶ Deploy host data/ 內 reference data → sandbox workspace/data/"
-# host repo:
-#   data/             ← reference data (suppliers.json, schedule.json, BOM 等)
-#   workspace/data/   ← runtime data (orders/ 跑時生成)
-# sandbox 內 agent 預期在 /sandbox/.openclaw/workspace/data/ 找這些 reference data。
-# 不 deploy 的話 agent 要自己 find 多繞一個 round-trip。
-nemoclaw "$SANDBOX" exec -- mkdir -p "$SANDBOX_WS/data"
+echo "▶ Deploy host data/ → sandbox workspace/data/"
+nemoclaw "$SANDBOX" exec -- mkdir -p "$SANDBOX_WS/data" < /dev/null
 if [ -d "data" ]; then
   while IFS= read -r f; do
     rel="${f#data/}"
@@ -100,47 +131,42 @@ if [ -d "data" ]; then
         echo "  ⊘ data/$rel ($size bytes) — SKIP (>100KB)"
         continue
       fi
-      parent=$(dirname "$rel")
-      if [ "$parent" != "." ]; then
-        nemoclaw "$SANDBOX" exec -- mkdir -p "$SANDBOX_WS/data/$parent" < /dev/null
-      fi
-      B64=$(base64 -w0 "$f" 2>/dev/null || base64 "$f" | tr -d '\n')
       echo "  → data/$rel ($size bytes)"
-      # ⚠️ < /dev/null 必加，同 skill 迴圈的理由
-      nemoclaw "$SANDBOX" exec -- bash -c "echo '$B64' | base64 -d > '$SANDBOX_WS/data/$rel'" < /dev/null
+      deploy_file_to_sandbox "$f" "$SANDBOX_WS/data/$rel"
     fi
   done < <(find data -type f 2>/dev/null)
 fi
 
+# ─── .env (含 BRIDGE_MODE=outbox 注入) ───
 if [ -f .env ]; then
-  # 永遠把 BRIDGE_MODE=outbox 加進去（host .env 沒這行，但 sandbox 一定要）
-  # 用 path-based detection 已經是主要手段，這個是雙保險
   TMP_ENV=$(mktemp)
   grep -v '^BRIDGE_MODE=' .env > "$TMP_ENV"
   echo "BRIDGE_MODE=outbox" >> "$TMP_ENV"
-  B64=$(base64 -w0 "$TMP_ENV" 2>/dev/null || base64 "$TMP_ENV" | tr -d '\n')
   echo "  → $SANDBOX_WS/.env (chmod 600, + BRIDGE_MODE=outbox 注入)"
-  nemoclaw "$SANDBOX" exec -- bash -c "echo '$B64' | base64 -d > '$SANDBOX_WS/.env' && chmod 600 '$SANDBOX_WS/.env'"
+  deploy_file_to_sandbox "$TMP_ENV" "$SANDBOX_WS/.env"
+  nemoclaw "$SANDBOX" exec -- chmod 600 "$SANDBOX_WS/.env" < /dev/null 2>/dev/null || true
   rm -f "$TMP_ENV"
 fi
 
+# ─── Verify ───
 echo ""
 echo "▶ Verify sandbox workspace/skills/ 內容"
-nemoclaw "$SANDBOX" exec -- ls -la "$SANDBOX_SKILLS/"
+nemoclaw "$SANDBOX" exec -- ls -la "$SANDBOX_SKILLS/" < /dev/null
 echo ""
 
-echo "▶ 試跑一個 skill 直接從 workspace 路徑"
-nemoclaw "$SANDBOX" exec -- bash -c "echo '{\"action\":\"list\"}' | bash $SANDBOX_SKILLS/order_store/cli.sh" 2>&1 | head -5
+echo "▶ Verify _lib/ 內容"
+nemoclaw "$SANDBOX" exec -- ls -la "$SANDBOX_SKILLS/$LIB_DIR_NAME/" < /dev/null
+echo ""
+
+echo "▶ Verify AGENTS.md 大小"
+nemoclaw "$SANDBOX" exec -- wc -c "$SANDBOX_WS/AGENTS.md" < /dev/null
+echo ""
+
+echo "▶ 試跑 order_store list"
+nemoclaw "$SANDBOX" exec -- bash -c "echo '{\"action\":\"list\"}' | bash $SANDBOX_SKILLS/order_store/cli.sh" < /dev/null 2>&1 | head -5
 echo ""
 
 echo "════════════════════════════════════════════════════════"
-echo "✅ Skills 寫進 workspace/skills/ 完成"
-echo ""
-echo "下一步：dashboard chat 開新 session 試："
-echo "  /new"
-echo "  請列出當前所有訂單"
-echo ""
-echo "或在 chat 內直接要 agent 用 absolute path："
-echo "  請用 exec tool 跑：bash $SANDBOX_SKILLS/order_store/cli.sh"
-echo "  stdin: {\"action\":\"list\"}"
+echo "✅ Deploy 完成"
+echo "下一步：dashboard 重整 + 開新 session + 客戶寄詢價"
 echo "════════════════════════════════════════════════════════"
