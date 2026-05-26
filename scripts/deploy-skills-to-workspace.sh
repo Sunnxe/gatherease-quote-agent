@@ -48,13 +48,20 @@ for skill in "${SKILLS[@]}"; do
       node_modules*|package.json|package-lock.json|.gitkeep) continue ;;
     esac
     if [ -f "$f" ]; then
+      size=$(wc -c < "$f")
+      # 大檔 (>100KB) 跳過 — nemoclaw exec arg 超過 ARG_MAX (~128KB) 會
+      # "Argument list too long" 直接 fail，整個 deploy 中斷。
+      # 大檔通常是 data/*.csv（10000 筆歷史訂單、BOM）— 早期 deploy 過後不需要再傳。
+      if [ "$size" -gt 102400 ]; then
+        echo "  ⊘ $rel ($size bytes) — SKIP (>100KB, ARG_MAX limit)"
+        continue
+      fi
       # 確保目標子目錄存在
       parent=$(dirname "$rel")
       if [ "$parent" != "." ]; then
         nemoclaw "$SANDBOX" exec -- mkdir -p "$remote_dir/$parent"
       fi
       B64=$(base64 -w0 "$f" 2>/dev/null || base64 "$f" | tr -d '\n')
-      size=$(wc -c < "$f")
       echo "  → $rel ($size bytes)"
       nemoclaw "$SANDBOX" exec -- bash -c "echo '$B64' | base64 -d > '$remote_dir/$rel'"
     fi
