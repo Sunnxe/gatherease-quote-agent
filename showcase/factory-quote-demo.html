@@ -325,6 +325,51 @@
   .agt .handoff{text-align:center;color:var(--nv-green);font-size:13px;height:0;overflow:visible;margin:-2px 0}
   .agt-spin{display:inline-block;width:10px;height:10px;border:2px solid var(--nv-green);border-top-color:transparent;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:5px}
   .footer-note b{color:var(--nv-green)}
+
+  /* ---------- OpenClaw Sandbox Status (top panel) ---------- */
+  .ocs{
+    background:linear-gradient(135deg, rgba(118,185,0,0.10) 0%, rgba(118,185,0,0.02) 100%);
+    border:1px solid rgba(118,185,0,0.35);
+    border-radius:14px;
+    overflow:hidden;
+    position:relative;
+  }
+  .ocs::before{
+    content:'';position:absolute;top:0;left:0;right:0;height:2px;
+    background:linear-gradient(90deg, transparent, var(--nv-green-bright), transparent);
+    animation:ocs-scan 3s ease-in-out infinite;
+  }
+  @keyframes ocs-scan{
+    0%,100%{opacity:.3;transform:translateX(-30%)}
+    50%{opacity:1;transform:translateX(30%)}
+  }
+  .ocs .ph{
+    padding:10px 14px;font-size:11.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;
+    border-bottom:1px solid rgba(118,185,0,0.18);display:flex;align-items:center;justify-content:space-between;
+    color:var(--nv-green-bright);
+  }
+  .ocs .ph .lobster{font-size:15px;margin-right:4px}
+  .ocs .ph .live{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:700}
+  .ocs .ph .live .pulse{width:7px;height:7px;border-radius:50%;background:var(--nv-green);animation:pulse 1.5s infinite}
+  .ocs .body{padding:11px 14px;display:flex;flex-direction:column;gap:9px}
+  .ocs .row{display:flex;align-items:center;gap:8px;font-size:11.5px;flex-wrap:wrap;line-height:1.4}
+  .ocs .row .label{
+    color:var(--muted);font-weight:700;letter-spacing:.5px;
+    font-size:10px;font-family:'JetBrains Mono',monospace;
+    width:60px;flex-shrink:0;
+  }
+  .ocs .val{color:var(--ink);font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600}
+  .ocs .chip{
+    font-size:10.5px;padding:3px 9px;border-radius:999px;font-weight:600;
+    background:rgba(118,185,0,0.08);border:1px solid rgba(118,185,0,0.28);color:var(--nv-green-bright);
+    font-family:'Noto Sans TC',sans-serif;
+    display:inline-flex;align-items:center;gap:4px;
+  }
+  .ocs .chip.skill{background:rgba(118,185,0,0.05);border-color:rgba(118,185,0,0.16);color:#c4dfa0}
+  .ocs .chip.policy{background:rgba(255,176,32,0.08);border-color:rgba(255,176,32,0.28);color:var(--hold)}
+  .ocs .chip.policy.ver{background:rgba(255,176,32,0.18);color:#ffd273;font-family:'JetBrains Mono',monospace;font-weight:800}
+  .ocs .skills{display:flex;flex-wrap:wrap;gap:5px;flex:1}
+  .ocs .meta{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace}
 </style>
 </head>
 <body>
@@ -397,6 +442,50 @@
 
     <!-- RIGHT: governance -->
     <div class="gov">
+      <!-- OpenClaw Sandbox status (top, real OpenClaw + NemoClaw governance state)
+           Live data via /api/* fetched from demo-mirror-server.js;
+           static fallback shown when running off file:// -->
+      <div class="ocs" id="ocsPanel">
+        <div class="ph">
+          <span><span class="lobster">🦞</span>OpenClaw Sandbox · NemoClaw 治理層</span>
+          <span class="live" id="ocsLive"><span class="pulse"></span><span id="ocsLiveLabel">kernel-active</span></span>
+        </div>
+        <div class="body">
+          <div class="row">
+            <span class="label">SANDBOX</span>
+            <span class="val" id="ocsSandboxName">gatherease-quote-agent</span>
+            <span class="meta" id="ocsSandboxMeta">· OpenClaw v2026.5.18 · Node v22 · uptime 8h</span>
+          </div>
+          <div class="row">
+            <span class="label">LLM</span>
+            <span class="chip" id="ocsLlmName">Nemotron Super 120B</span>
+            <span class="meta" id="ocsLlmMeta">via integrate.api.nvidia.com · LLM tool-calling loop</span>
+          </div>
+          <div class="row">
+            <span class="label">SKILLS</span>
+            <div class="skills" id="ocsSkills">
+              <span class="chip skill" data-skill="read_drawing">📐 read_drawing</span>
+              <span class="chip skill" data-skill="get_history_quote">🔍 get_history_quote</span>
+              <span class="chip skill" data-skill="calc_cost">💰 calc_cost</span>
+              <span class="chip skill" data-skill="compare_suppliers">⚖️ compare_suppliers</span>
+              <span class="chip skill" data-skill="line_notify">📱 line_notify</span>
+              <span class="chip skill" data-skill="send_email">📧 send_email</span>
+            </div>
+            <span class="meta" id="ocsSkillsCount">· 6/6 ready</span>
+          </div>
+          <div class="row">
+            <span class="label">POLICY</span>
+            <span class="chip policy ver" id="ocsPolicyVer">v10</span>
+            <span class="policy-chips" id="ocsPolicies">
+              <span class="chip policy">line-messaging</span>
+              <span class="chip policy">gmail-smtp</span>
+              <span class="chip policy">gmail-imap</span>
+            </span>
+            <span class="meta">· seccomp + Landlock + netns 強制中</span>
+          </div>
+        </div>
+      </div>
+
       <div class="controls">
         <button class="btn-play" id="playBtn" onclick="runDemo()">▶ 播放 Demo</button>
         <button class="btn-reset" onclick="resetDemo()">重置</button>
@@ -1041,6 +1130,68 @@ function resetDemo(){
 }
 
 initFlow();
+
+// ─── Live mirror: fetch real OpenClaw/NemoClaw state from demo-mirror-server.js ───
+// 只有跑在 http(s):// (透過 scripts/start-demo-mirror.sh) 才會 update real data。
+// 直接 file:// 打開 HTML 時 fetch 會 fail，保留靜態 hardcode 數字作 fallback。
+async function refreshOpenClawStatus(){
+  try {
+    const [statusR, skillsR, policiesR] = await Promise.allSettled([
+      fetch('/api/status').then(r=>r.json()),
+      fetch('/api/skills').then(r=>r.json()),
+      fetch('/api/policies').then(r=>r.json()),
+    ]);
+    const live = document.getElementById('ocsLive');
+    const liveLabel = document.getElementById('ocsLiveLabel');
+
+    // /api/status
+    if (statusR.status === 'fulfilled' && statusR.value && !statusR.value.error) {
+      const s = statusR.value;
+      const name = document.getElementById('ocsSandboxName');
+      const meta = document.getElementById('ocsSandboxMeta');
+      const llm = document.getElementById('ocsLlmName');
+      if (name) name.textContent = s.sandbox_name;
+      if (meta) meta.textContent = `· OpenShell v${s.openshell_version} · gateway ${s.gateway_state} · ${s.provider}`;
+      // Model 顯示縮短：nvidia/nemotron-3-super-120b-a12b → Nemotron Super 120B
+      if (llm && s.model) {
+        const m = s.model.toLowerCase();
+        let pretty = s.model;
+        if (m.includes('super')) pretty = 'Nemotron Super 120B';
+        else if (m.includes('nano')) pretty = 'Nemotron Nano 30B';
+        llm.textContent = pretty;
+      }
+      if (liveLabel) liveLabel.textContent = s.gateway_healthy ? 'kernel-active · live' : 'gateway down';
+    }
+
+    // /api/skills
+    if (skillsR.status === 'fulfilled' && skillsR.value && !skillsR.value.error) {
+      const sk = skillsR.value;
+      const ready = new Set(sk.gatherease_skills_ready || []);
+      document.querySelectorAll('#ocsSkills .chip.skill').forEach(chip => {
+        const name = chip.dataset.skill;
+        chip.style.opacity = ready.has(name) ? '1' : '0.4';
+        chip.title = ready.has(name) ? '✓ ready in sandbox' : '✗ not installed';
+      });
+      const countEl = document.getElementById('ocsSkillsCount');
+      if (countEl) countEl.textContent = `· ${sk.gatherease_count}/${sk.gatherease_total} ready`;
+    }
+
+    // /api/policies
+    if (policiesR.status === 'fulfilled' && policiesR.value && !policiesR.value.error) {
+      const p = policiesR.value;
+      const active = new Set(p.gatherease_custom_active || []);
+      document.querySelectorAll('#ocsPolicies .chip.policy').forEach(chip => {
+        const label = chip.textContent.trim();
+        chip.style.opacity = active.has(label) ? '1' : '0.4';
+      });
+    }
+
+  } catch (e) {
+    // silent fallback — file:// 開的時候會走這
+  }
+}
+refreshOpenClawStatus();
+setInterval(refreshOpenClawStatus, 5000);
 </script>
 </body>
 </html>
