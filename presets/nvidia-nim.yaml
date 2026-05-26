@@ -1,0 +1,35 @@
+# GatherEase × NemoClaw — NVIDIA NIM API egress preset
+#
+# 套用：nemoclaw <sandbox> policy-add --from-file ./presets/nvidia-nim.yaml --dry-run
+# 確認沒問題後：       nemoclaw <sandbox> policy-add --from-file ./presets/nvidia-nim.yaml --yes
+#
+# 用途：讓 sandbox 內 read_drawing skill 呼叫 NVIDIA NIM 的 vision model
+#       (meta/llama-3.2-90b-vision-instruct 或 Nemotron Nano Omni vision)
+#       真讀客戶工程圖 PDF。
+#
+# 注意：sandbox onboard 時 inference.local 是 NemoClaw 預設代理路由 (Nemotron Super
+#       走那條)。但 read_drawing skill 用 fetch() 直接打 integrate.api.nvidia.com，
+#       這個 host 必須單獨 allow，否則 squid proxy 擋 403。
+#
+# 雖然 onboard preset 內含 NVIDIA endpoints，但對應 inference.local 的 proxy 路由，
+# 不是讓 skill 直連 integrate.api.nvidia.com 用。我們對 read_drawing 補這個 preset。
+
+preset:
+  name: nvidia-nim
+  description: "NVIDIA NIM API for vision drawing read (read_drawing skill)"
+
+network_policies:
+  nvidia-nim:
+    name: nvidia-nim
+    endpoints:
+      # NVIDIA NIM REST API: chat completions, models, embeddings
+      - host: integrate.api.nvidia.com
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow: { method: POST, path: "/v1/**" }
+          - allow: { method: GET,  path: "/v1/**" }
+    binaries:
+      - { path: /usr/local/bin/node }
+      - { path: /usr/bin/node }
