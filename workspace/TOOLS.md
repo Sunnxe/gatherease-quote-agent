@@ -4,11 +4,15 @@
 
 ## OpenClaw 內建 tools
 
+來自 `tools.profile: "coding"`（group:runtime + group:fs + group:web + group:sessions + group:memory）。
+
 | Tool | 用途 |
 |---|---|
-| `exec` | 跑 shell command。我大多數動作（call skill / 讀 data file）都透過 `exec` 觸發對應 `cli.sh` |
-| `file_read` | 讀 workspace 內檔案 |
-| `file_write` | 寫檔案 (audit log / 中間狀態) |
+| `exec` | 跑 shell command（`bash` 是它的 alias）。我大多數動作（call skill / 讀 data file）都透過 `exec` 觸發對應 `cli.sh` |
+| `read` | 讀 workspace 內檔案 |
+| `write` | 寫檔案 (audit log / 中間狀態) |
+| `edit` | 改檔案某個區段 |
+| `apply_patch` | 對檔案套 diff patch |
 
 ## 桐聚 workspace skills (10 個)
 

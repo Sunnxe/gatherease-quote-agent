@@ -50,6 +50,9 @@ for skill in "${SKILLS[@]}"; do
   fi
   echo "▶ Installing skill: $skill"
   nemoclaw "$SANDBOX" skill install "$skill_path"
+  # 重要：workspace skills 預設 disabled，要 explicitly enable agent 才看得到
+  echo "  → enabling..."
+  nemoclaw "$SANDBOX" exec -- openclaw skills enable "$skill" 2>&1 | tail -1 || true
   echo ""
 done
 
