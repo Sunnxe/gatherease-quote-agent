@@ -139,27 +139,108 @@ cat /tmp/rfq-sup001.json | bash /sandbox/.openclaw/workspace/skills/send_email/c
 2. 看 supplier_replies 數 == 3 了？
    - 還不夠 → user-facing「目前 N/3 家回信，繼續等」
    - 全到了 → 繼續 step 3
-3. compare_suppliers {supplier_ids, customer_requirements: {max_lead_time, requires_anti_static}}
+3. compare_suppliers {supplier_ids, customer_requirements: {max_surface_treatment_days, requires_anti_static, qty}}
+   → 拿到 {ranked[], recommendation, trade_off_table, strategies[]}
 4. order_store update {patch: {comparison, status: "awaiting_tradeoff"}}
-5. line_notify {gate: "gate-2-tradeoff-decision", summary: trade-off table, options: ["選大同","選順興 + 延 3 天","取消"]}
-6. order_store append_audit {gate:"gate-2-tradeoff-decision"}
+
+5. **⛔ 鐵律：options 三個都動態，絕對不可硬寫死！**
+   令 R = comparison.ranked         （已按分數排序，R[0] 是 AI 推薦）
+   令 S = comparison.strategies[0]   （AI 算出的最佳業務策略，可能是議價/談交期/談放寬規格）
+   options = [
+     `選 ${R[0].name}（AI 推薦）`,    // ← AI 判斷的 winner
+     `改選 ${R[1].name}`,              // ← 次優 fallback
+     S ? S.short_label : "取消"         // ← AI 策略建議（wow point）
+   ]
+   summary 必須包含三段：
+     a. recommendation.headline + one_liner（AI 為何推薦）
+     b. trade_off_table（3 家完整對比 + 分數）
+     c. strategies[0].headline + rationale（AI 業務策略 + 建議話術）
+
+6. line_notify {
+     hold_id, order_id,
+     gate: "gate-2-tradeoff-decision",
+     summary: `三家報價回來了。\n\n${comparison.recommendation.headline}\n理由：${comparison.recommendation.one_liner}\n\n完整對比：\n${comparison.trade_off_table}\n\n${S ? S.headline + '\n' + S.rationale : ''}`,
+     options: <上面 step 5 動態組的 options>,
+     // ⚠️ 把 ranked + strategy 存進 pending JSON，[LINE_CB] 才能 lookup
+     extra: {
+       ranked_supplier_ids: [R[0].supplier_id, R[1].supplier_id],
+       strategy: S || null   // ← 含 alternative_supplier_id、預估省多少
+     }
+   }
+7. order_store append_audit {gate:"gate-2-tradeoff-decision", ai_recommendation: R[0].supplier_id, ai_strategy: S?.id || null}
+```
+
+**為什麼第三個 option 不是「取消」**：AI agent 的 wow point 不是「會比較表格」，是**像資深業務一樣思考**。AI 看到「客戶 ESD 把選項擋到只剩貴的」→ 主動提出「跟客戶談放寬規格 → 改用順興省 12% NT$10,000」+ 給話術 — 這才是值得 demo 的場景。
+
+老闆按了「跟客戶談...」這個 option 後，agent 走**策略執行路徑**（情境 D2），會用 send_email 發協商信給客戶、不直接定 supplier。
+
+---
+
+### 🟢 情境 D：老闆 LINE 簽了 gate-2 — 三條路 (D1/D2/D3)
+
+**訊號**：「老闆已決定 hold_id=xxx choice=N action=...」
+
+讀 pending JSON 後，**依 choice 走 3 條不同路徑**：
+
+| choice | option label | 走哪條 |
+|---|---|---|
+| 0 | `選 ${R[0].name}（AI 推薦）` | **D1** — 直接定 ranked[0] |
+| 1 | `改選 ${R[1].name}` | **D1** — 改定 ranked[1] |
+| 2 | `跟客戶談...省 XX%`（AI 策略）| **D2** — 發協商信給客戶、暫停 supplier 決定 |
+
+---
+
+#### 🟢 D1：老闆採納 AI 推薦或 fallback（choice 0 / 1）
+
+```
+1. 讀 pending JSON → pending.extra.ranked_supplier_ids[choice] = chosen_supplier_id
+   ⚠️ 不要從 action 字串猜 supplier name → 用 ranked_supplier_ids[choice] 直接 lookup
+2. order_store get {order_id} → 拿 BOM / qty / customer_tier
+3. calc_cost {product_id, bom, qty, surface_treatment_supplier_id: chosen_supplier_id, customer_tier}
+   → 最終單價
+4. order_store update {patch: {chosen_supplier_id, final_cost, status: "awaiting_signoff"}}
+5. order_store append_audit {gate:"gate-2-tradeoff-decision", choice, chosen_supplier_id, ai_recommended: order.comparison.recommendation.supplier_id, accepted_ai_recommendation: (chosen_supplier_id === order.comparison.recommendation.supplier_id)}
+6. line_notify {gate: "gate-3-final-quote-signoff", summary: 最終報價 + 毛利率 + 老闆選的廠商名, options: ["簽核並寄出","修改價格","取消"]}
 ```
 
 ---
 
-### 🟢 情境 D：老闆 LINE 簽選了「大同」
+#### 🟢 D2：老闆採納 AI 策略 → 發協商信給客戶（choice = 2 且 strategy 存在）
 
-**訊號**：「老闆已決定 hold_id=xxx choice=0 action=選大同」
+**這是 demo wow scene** — agent 不是死板的「比較三家叫老闆選一家」，而是看出機會主動提出策略、老闆採納 → AI 自己寫協商信。
 
-**動作**：
+**訊號**：「老闆已決定 hold_id=xxx choice=2 action=跟客戶談放寬 ESD...」
 
 ```
-1. order_store get → 拿 supplier 選擇
-2. calc_cost {product_id, bom, qty, surface_treatment_supplier_id: "SUP-002", customer_tier}
-   → 最終單價
-3. order_store update {patch: {final_cost, status: "awaiting_signoff"}}
-4. line_notify {gate: "gate-3-final-quote-signoff", summary: 最終報價 + 毛利率, options: ["簽核並寄出","修改價格","取消"]}
+1. 讀 pending JSON → pending.extra.strategy = S（含 alternative_supplier_id、savings、headline）
+2. order_store get {order_id} → 拿 customer.email / customer.name / product_name / qty / comparison
+3. 用 S.rationale 為基礎寫協商信：
+   send_email {
+     to: order.customer.email,
+     subject: "【${order_id}】${product_name} 報價方案 — 規格彈性提案",
+     body: <AI 寫的協商信，包含>:
+       - 感謝詢價
+       - 點出 ESD 規格目前讓選項只剩一家最貴的
+       - 提出替代方案：${S.alternative_supplier_name}（單價 / 交期 / 認證）
+       - 預估省 NT$${S.estimated_total_savings_twd}
+       - 請客戶確認 ESD 是否硬性
+     attachments: []
+   }
+4. order_store update {patch: {
+     strategy_proposed: S.id,
+     strategy_email_sent_to: customer.email,
+     awaiting_customer_response_since: now,
+     status: "awaiting_customer_negotiation"
+   }}
+5. order_store append_audit {gate:"gate-2-tradeoff-decision", choice:2, strategy: S.id, alternative_supplier_id: S.alternative_supplier_id, estimated_savings_twd: S.estimated_total_savings_twd}
+6. 跟 user 講「✅ 已採納 AI 策略 → 寄協商信給 ${customer.name}，等客戶回應」
+7. (背景) 後續 poll inbox_watch mode=customer_reply 等客戶回。回了 → 看客戶是接受還拒絕 → 走對應分支。
 ```
+
+**重要原則**：
+- D2 **不會 calc_cost、不會走 gate-3 簽核** — supplier 選擇暫停、等客戶談完。
+- 給 user 的進度訊息要明確區分「定下供應商了」vs「等客戶回應協商」— 不要混淆。
+- 協商信 body **用 AI 自己生**（依 S.rationale 改寫成商業語氣），不要直接貼 S.rationale 那段 markdown。
 
 ---
 
@@ -245,7 +326,7 @@ webhook 注入的 user message 格式長這樣：
    |---|---|---|
    | gate-1-secret-probe | 0=「仍正常報價」 / 1=「暫停」 / 2=「回信婉拒」 | 走情境 F 對應動作 |
    | gate-pre-rfq | 0=「發詢價」 / 1=「修改名單」 / 2=「取消」 | 走**情境 B** (send_email 3 RFQ) |
-   | gate-2-tradeoff-decision | 0=「選大同」 / 1=「選順興 + 延 3 天」 / 2=「取消」 | 走**情境 D** (update supplier_choice) |
+   | gate-2-tradeoff-decision | **三條路**：choice=0/1 → ranked[choice] supplier_id；choice=2 → pending.extra.strategy（AI 策略，不選 supplier 改發協商信） | 走**情境 D1**（定 supplier）或 **D2**（採納 AI 策略 → 發協商信給客戶） |
    | gate-3-final-quote-signoff | 0=「簽核並寄出」 / 1=「修改價格」 / 2=「取消」 | 走**情境 E** (generate_quote_pdf + send_email 客戶) |
 
 3. **更新 order_store audit + status**：

@@ -34,9 +34,15 @@ exec bash skills/line_notify/cli.sh
   "hold_id": "gate-pre-rfq-1779710149728-sshwmt",
   "gate": "gate-pre-rfq",
   "summary": "📋 詢價單彙整\n客戶：鴻碩電子 · ...",
-  "options": ["發詢價", "修改名單", "取消"]
+  "options": ["發詢價", "修改名單", "取消"],
+  "order_id": "QUO-2026-0001",                 // optional：關聯訂單
+  "extra": {                                    // optional：callback 時要 lookup 的 context
+    "ranked_supplier_ids": ["SUP-002","SUP-003"]
+  }
 }
 ```
+
+**`extra` 用法**：gate-2-tradeoff-decision 時，options 是 AI 動態算的（不是寫死「選大同」），所以 [LINE_CB] 回來時 agent 沒辦法從 `choice=0/1` 直接知道是哪家。把 `ranked_supplier_ids` 存進 pending JSON、callback 時 lookup `ranked_supplier_ids[choice]` → 對應的 supplier_id。其他 gate 不需要可以不傳。
 
 **stdout**（立刻 return，**不阻塞等老闆按按鈕**）：
 

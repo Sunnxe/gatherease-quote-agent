@@ -108,7 +108,7 @@ async function pushToLINE({ userId, accessToken, flex }) {
 // ─── main ───
 async function main() {
   const input = await readStdin();
-  const { hold_id, gate, summary, options } = input;
+  const { hold_id, gate, summary, options, order_id, extra } = input;
 
   if (!hold_id) throw new Error('hold_id required');
   if (!gate) throw new Error('gate required');
@@ -121,10 +121,13 @@ async function main() {
   if (!token) throw new Error('LINE_CHANNEL_ACCESS_TOKEN env var not set');
 
   // 寫 pending file (host webhook server 收到 postback 後可查、注入 agent)
+  // extra 欄位給 agent 塞 callback 時要 lookup 的 context（譬如 gate-2 的 ranked_supplier_ids）
   await fs.mkdir(PENDING_DIR, { recursive: true });
   const pendingPath = path.join(PENDING_DIR, `${hold_id}.json`);
   await fs.writeFile(pendingPath, JSON.stringify({
     hold_id, gate, summary, options,
+    order_id: order_id || null,
+    extra: extra || {},
     pushed_at: new Date().toISOString()
   }, null, 2));
 
