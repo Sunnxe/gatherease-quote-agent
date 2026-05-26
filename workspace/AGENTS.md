@@ -12,6 +12,35 @@ GatherRoller 公司 email = `s778906@gmail.com`，**所有客戶詢價跟廠商�
 
 ---
 
+## ⛔ 業務模型（搞錯這個會整個 demo 廢掉）
+
+**GatherRoller 是橡膠輪「組裝廠」，不是賣鐵輪、也不是表面處理廠**。我的客戶買的是「**成品包膠輪**」（finished coated rubber roller）。
+
+成品 = `鐵輪本體` + `表面處理` + `自家包膠 / 組裝`：
+
+| 階段 | 誰做 | 怎麼來 |
+|---|---|---|
+| ① 鐵輪本體 | **採購**自鐵輪廠 SUP-IRON-001（金鋼鐵輪製造） | 固定價 NT$650/隻、長期合作、**不用 RFQ 比價** |
+| ② 表面處理 | **外發**給 3 家表面處理代工廠（SUP-001/002/003） | **這個才要 RFQ 3 家比價**！去銳角、毛邊、抗靜電處理 |
+| ③ 包膠 + 組裝 | 自家 in-house 產線 | 矽膠包覆 + 軸承 + 端蓋組裝 + QC |
+
+### 🔥 RFQ 給代工廠到底要問什麼
+
+**不是**把客戶整張訂單轉發。**是**問代工廠：「我有 N 隻鐵輪本體，要做表面處理，你報多少錢？」
+
+正確 RFQ body 內容：
+- 數量（=客戶訂單數量）
+- **鐵輪本體規格**（外徑、總長、材質 S45C，從工程圖讀的）
+- **表面處理需求**（去銳角、毛邊；客戶端是 PCB 廠的話加 ESD 抗靜電認證）
+- **附件**：鐵輪本體圖紙（不是成品圖）
+- 請對方回：單件加工費 / 交期 / 是否有 ESD 認證 / 良率
+
+❌ 錯誤 RFQ body（agent 之前犯過）：「請貴司報價成品矽膠包膠輪 500 隻」— 代工廠不做包膠、也不會報成品價，他們會傻眼。
+
+✅ 正確 RFQ body：「請貴司針對下列鐵輪表面處理報價：500 隻、S45C 外徑 50mm × 長 732mm，需 ESD 抗靜電處理...」
+
+---
+
 ## 我有的 10 個 skill（依角色分類）
 
 | 角色 | Skill | 何時用 |
@@ -96,13 +125,21 @@ inbox JSON 已寫到 /sandbox/.openclaw/workspace/data/inbox/74010.json。
 
 **訊號**：webhook 把老闆按鈕注入成新 user message：「老闆已決定 hold_id=xxx choice=0 action=發詢價」
 
-**⛔⛔⛔ 三條鐵律（違反 = 整個 demo 廢掉）**：
+**⛔⛔⛔ 五條鐵律（違反 = 整個 demo 廢掉）**：
 
-1. **必須真的 call send_email × 3 次**，不可以 mock supplier_replies 跳過。等廠商真回信再 compare_suppliers。
-2. **3 個 supplier email 必須先 cat suppliers.json 拿、不可以憑記憶編！**
+1. **必須真的 call send_email × 3 次獨立 tool call**，每次 to 都不一樣。
+   - ❌ 禁止：`order_store update rfq_sent_to: [3 emails]` 但只 call send_email 一次（**這叫說謊** — 之前真的犯過）
+   - ❌ 禁止：把 3 個 email 塞進同一個 send_email 的 to 陣列
+   - ✅ 必須：3 個 send_email tool call，每次 to 是一家。寄完每一封，stdout 都要 `{"status":"queued"...}` 才算成功。
+   - ✅ Subject 必須含 supplier_name（譬如「- 全鋼表處」）— 這樣才能在 outbox 列表分辨 3 封不同信
+2. **必須先 cat suppliers.json 拿真實 email、不可以憑記憶編**！
    - ❌ 禁止：`supplier-all-steel@test-gatherease.example`、`supplier-1@xxx`、`supplier@example.com` 這類 placeholder/fake domain — **這是早期 demo 的舊資料，現在已經改了**
    - ✅ 必須：先跑 `cat /sandbox/.openclaw/workspace/data/suppliers.json` 看 JSON 拿真實 email
-3. **每封 RFQ 必須帶 attachments**（圖紙 PDF），body 寫「圖紙見附件」就要真附。
+3. **RFQ body 是問表面處理外發報價，不是轉發客戶整張訂單**（見上面業務模型）。
+   - ❌ 禁止：「請報價成品矽膠包膠輪 500 隻」
+   - ✅ 必須：「請報價鐵輪表面處理外發加工費 500 隻 + S45C 鐵輪規格 + 表處需求 + 是否有 ESD 認證」
+4. **每封 RFQ 必須帶 attachments**（圖紙 PDF），body 寫「圖紙見附件」就要真附。
+5. **mock supplier_replies = 死罪**：不准自己編三家報價、不准跳過等回信、不准 calc_cost 提前算成本。等 bridge 自動 inject `[EMAIL_IN] 廠商回信` 進來才能進 compare_suppliers。
 
 ---
 
@@ -126,32 +163,45 @@ inbox JSON 已寫到 /sandbox/.openclaw/workspace/data/inbox/74010.json。
    ⚠️ 如果 incoming.drawing_attachment_path 是 null/missing
    → 改抓 engineering_read._meta.drawing_path 或 inbox JSON 內 attachments[0].saved_path
 
-4. 對每個 supplier (SUP-001/002/003) 各 call send_email 一次:
-   send_email {
-     to: <step 2 cat 出來的 supplier email>,
-     subject: "【RFQ-<order_id>】<product_name> × <qty> - <supplier_name>",
-     body: "請貴司報價，產品/數量/規格如下...圖紙見附件，三個工作天內回覆。",
-     attachments: [{"path": DRAWING_PATH, "filename": "drawing.pdf"}]
-   }
+4. **獨立 3 次 send_email tool call**，每次只寄一家、subject 含 supplier_name：
+
+   Call #1 — to: sunny.liao@gatherease.ai      / subject 含「- 全鋼表處」    / 內文稱「陳廠長」
+   Call #2 — to: gathereasebot@gmail.com       / subject 含「- 大同精密表面」/ 內文稱「黃經理」
+   Call #3 — to: xpert.back.work@gmail.com     / subject 含「- 順興電鍍工業」/ 內文稱「李課長」
+
+   每封都帶 attachments: [{"path": DRAWING_PATH, "filename": "drawing.pdf"}]
 
 5. order_store update {patch: {rfq_sent_to: ["SUP-001","SUP-002","SUP-003"], rfq_sent_at, status: "rfq_sent"}}
-6. 跟 user 講「已寄 RFQ 給 3 家代工廠：全鋼表處 (sunny.liao@gatherease.ai)、大同精密表面 (gathereasebot@gmail.com)、順興電鍍工業 (xpert.back.work@gmail.com)，等待回信」← 把真實 email 列出來證明沒亂編
+   ⚠️ 只有真的 send_email × 3 次都回 status:"queued" 才能 update rfq_sent_to！
+6. 跟 user 講「已寄 RFQ 給 3 家代工廠：
+     - 全鋼表處 → sunny.liao@gatherease.ai
+     - 大同精密表面 → gathereasebot@gmail.com
+     - 順興電鍍工業 → xpert.back.work@gmail.com
+   等待回信中」
 7. (背景) 之後 bridge 自動 inject [EMAIL_IN] 廠商回信 進來，**不自己編 supplier_replies**
 ```
 
-**完整 send_email call 範例（中文 body + 安全 heredoc）**：
+---
+
+**完整 send_email call 範例（call #1，其他兩家照樣套）— 含正確的 RFQ body**：
 
 ```bash
 cat > /tmp/rfq-sup001.json <<'EOF'
 {
   "to": "sunny.liao@gatherease.ai",
-  "subject": "【RFQ-QUO-2026-0002】矽膠抗靜電包膠輪 × 500 - 全鋼表處",
-  "body": "陳廠長 您好，\n\n請貴司針對下列產品報價：\n產品：矽膠抗靜電包膠輪\n數量：500 隻\n規格：外徑 50mm (+0.25/-0.00)，塗覆長度 598mm\n硬度 Shore A 40 ±5\n表面處理：去銳角、毛邊\n\n圖紙見附件。\n請三個工作天內回覆單價與交期。\n\nGatherRoller 敬上",
+  "subject": "【RFQ-QUO-2026-0002】鐵輪表面處理外發 × 500 - 全鋼表處",
+  "body": "陳廠長 您好，\n\n本案為客戶詢價 PCB 產線用矽膠抗靜電包膠輪 500 隻，桐聚採購鐵輪本體後欲外發貴司做表面處理，請貴司就下列規格報價：\n\n[案件資訊]\n• 數量：500 隻\n• 鐵輪本體：S45C 碳鋼，外徑 50mm (+0.25/-0.00)，總長 732mm，軸間距 665mm\n• 表面處理需求：去銳角、毛邊處理\n• 客戶端規格：PCB / 光電面板產線使用，需具備抗靜電 ESD-S20.20 或同等認證（若貴司無此認證請註明，仍歡迎報價供參考）\n• 良率要求：≥ 95%\n\n[請於三個工作天內回覆]\n• 單件加工費 (NT$/隻)\n• 交期 (工作天)\n• 是否具備 ESD 認證\n• 預估良率\n\n圖紙見附件（鐵輪本體規格圖）。\n\nGatherRoller 桐聚科技 敬上",
   "attachments": [{"path": "/sandbox/.openclaw/workspace/data/incoming/74011-昕叡電子工程圖.pdf", "filename": "drawing.pdf"}]
 }
 EOF
 cat /tmp/rfq-sup001.json | bash /sandbox/.openclaw/workspace/skills/send_email/cli.sh
+
+# 第二家：把 to / 收件人 / 稱謂 / subject 末段公司名都換掉，body 主體一樣
+# Call #2 → gathereasebot@gmail.com、稱「黃經理」、「大同精密表面」
+# Call #3 → xpert.back.work@gmail.com、稱「李課長」、「順興電鍍工業」
 ```
+
+⚠️ **記得**：要 3 個獨立 tool call，不是 1 個 tool call 寄 3 個地址。每次 cli.sh 回 `{"status":"queued"}` 才算 OK。
 
 **注意**：body 含「NT$」金額 / 中文逗號等特殊字元時**必須用 cat <<'EOF' heredoc**，不可用 printf（會踩 `$` format spec bug）。
 
@@ -424,6 +474,7 @@ sandbox 內 squid HTTP proxy 擋 SMTP/IMAP（非 HTTP protocol）。所以 `send
 ## 對 agent 的硬性規矩
 
 1. **絕對不要 hallucinate**：規格 / part number / 單價 / **供應商 email** — 都從 skill output / data 檔拿，不確定就 cat 真檔。**禁止 placeholder 寄信**：看到自己想填 `*.test.example` / `*.test-gatherease.example` / `supplier@example.com` → 你在編，立刻停下去 cat suppliers.json。
+2. **不准在 order_store 寫沒做的事**：rfq_sent_to / supplier_replies / final_quote_pdf_path 這類欄位**只在真的成功跑完對應 skill 之後**才 update。譬如只 send_email 一次就 update `rfq_sent_to: [3 emails]` 是說謊，會被 audit trail 抓出來。
 2. **每個 skill call 都帶 order_id**：除了 inbox_watch poll + order_store create
 3. **絕對不要把 secret echo 進 chat**：API key / access token 出現就停下
 4. **金額千分位**：`NT$ 322,400` 給老闆看
