@@ -9,6 +9,7 @@
 
 const fs = require('fs/promises');
 const path = require('path');
+const { writebackToOrder } = require('../_lib/order_writeback');
 
 const SKILL_DIR = __dirname;
 const SCHEDULE_JSON = path.join(SKILL_DIR, 'data', 'schedule.json');
@@ -91,8 +92,39 @@ async function checkSchedule({ product_id, qty, customer_desired_lead_days, surf
 
 async function main() {
   const input = await readStdin();
+  const { order_id } = input;
   const result = await checkSchedule(input);
-  process.stdout.write(JSON.stringify(result));
+
+  // Auto-writeback (避免 agent 手抄)
+  let writebackResult = null;
+  if (order_id) {
+    writebackResult = writebackToOrder({
+      order_id,
+      patch: { schedule_check: result },
+      audit: {
+        level: 'INFO',
+        msg: `schedule check: ${result.achievable ? 'achievable' : 'gap=' + result.gap_days + ' days'}`,
+        skill: 'check_schedule',
+        total_lead_days: result.total_lead_time_days
+      }
+    });
+  }
+
+  if (order_id && writebackResult && writebackResult.ok) {
+    // Slim summary
+    process.stdout.write(JSON.stringify({
+      order_id,
+      writeback: writebackResult,
+      total_lead_time_days: result.total_lead_time_days,
+      customer_desired_lead_days: result.customer_desired_lead_days,
+      gap_days: result.gap_days,
+      achievable: result.achievable,
+      note: result.note + '（schedule_check 已寫回 order_store）'
+    }));
+  } else {
+    // 沒 order_id 或寫回失敗 — 退回完整 JSON
+    process.stdout.write(JSON.stringify({ ...result, writeback: writebackResult }));
+  }
 }
 
 main().catch(err => {

@@ -65,11 +65,52 @@ GatherRoller 公司 email = `s778906@gmail.com`，**所有客戶詢價跟廠商�
 **鐵律：每個 skill call 都帶 `order_id`**。流程：
 
 1. 新詢價偵測到 → `order_store create` → 拿到 `QUO-YYYY-NNNN`
-2. 每個 skill output → `order_store update {order_id, patch: {field: value}}` 寫回對應欄位
+2. **5 個 auto-writeback skill 帶 order_id 自己寫回 order，我不用再 update**（見下面）
 3. 每個 GATE 簽核 → `order_store append_audit {order_id, entry: {gate, choice, ...}}`
-4. 狀態切換 → `order_store update {order_id, patch: {status: "..."}}`
+4. 狀態切換 → `order_store update {order_id, patch: {status: "..."}}`（只有 status 這種短欄位需要手動 update）
 
 詳細 schema 跟 status lifecycle 見 `skills/order_store/SKILL.md`。
+
+---
+
+## ⚡ Auto-Writeback 規則（**讀懂這段省 80% tool call**）
+
+以下 5 個 skill 拿到 `order_id` 後**會自己寫回 order JSON**，我**只會收到 slim summary**，不用搬大 JSON：
+
+| Skill | 自動寫進 order 的欄位 | Slim summary 給我看的 |
+|---|---|---|
+| `read_drawing` | `engineering_read`（含 specs/bom 整包）+ `status: analyzing` | product_id / hardness / 外徑 / anti_static_required / vision_used |
+| `get_history_quote` | `history_matches`（top-K 整包） | top 3 + weighted_avg_unit_price |
+| `check_schedule` | `schedule_check` | total_lead_days / achievable / gap_days |
+| `calc_cost` | `cost_baseline`（BOM breakdown 整包） | unit_price / total_cost / markup |
+| `compare_suppliers` | `comparison`（candidates/ranked/strategies 整包）+ `status: awaiting_tradeoff` | recommendation / strategy / **suggested_line_options 給 line_notify 直接用** |
+
+### ⛔ 我絕對不要做：
+
+1. **不要 manual `order_store update` 把這些大 JSON 重抄一遍** — skill 已經寫了。我抄等於覆蓋（最壞情況），白費 5-10 個 tool call 試 escape（最常情況）。
+2. **不要 `order_store get` 拿完整 engineering_read 再丟給下個 skill** — 直接帶 `order_id` 過去，下個 skill 自己會讀。
+3. **看到 stdout 有 `writeback: {ok: true, fields_updated: [...]}` 就是已經寫好了**，不用再做事。
+
+### ✅ 我該做的：
+
+- 帶 `order_id` 給每個 skill
+- 收 slim summary、看裡面數字決定下一步
+- 推 LINE 時直接用 `suggested_line_options`（compare_suppliers 預備好）
+- 真的需要短欄位 update（譬如 `rfq_sent_to: [3 emails]`）才用 `order_store update`
+
+### get_history_quote / calc_cost 額外好處
+
+帶 `order_id` 後，**連 `new_order` / `bom` 都不用打**：
+- `get_history_quote` 從 order.engineering_read 自動構 new_order
+- `calc_cost` 從 order.engineering_read.bom 自動拿 BOM
+
+我只要：
+```bash
+printf '%s' '{"order_id":"QUO-2026-0001","k":5}' | bash .../get_history_quote/cli.sh
+printf '%s' '{"order_id":"QUO-2026-0001","product_id":"...","qty":500,"customer_tier":"tier_A"}' | bash .../calc_cost/cli.sh
+```
+
+短 JSON 不會踩 escape bug、不會 hallucinate spec。
 
 ---
 
@@ -97,27 +138,41 @@ inbox JSON 已寫到 /sandbox/.openclaw/workspace/data/inbox/74010.json。
 1. order_store create {customer:{name:fromName, email:fromEmail}, incoming:{email_subject, drawing_attachment_path}}
 2. 後面照情境 A 標準流程跑下去（read_drawing → get_history_quote → check_schedule → calc_cost → line_notify gate-pre-rfq）
 
-**動作**：
+**動作**（auto-writeback 後省一半步驟）：
 
 ```
 1. order_store create {customer: {name, email}, incoming: {email_subject, drawing_attachment_path}}
    → 拿到 order_id
+
 2. read_drawing {order_id, drawing_pdf_path, customer_name}
-   → vision 真讀 → 規格 + BOM
-3. order_store update {order_id, patch: {engineering_read: <step 2 output>, status: "analyzing"}}
-4. get_history_quote {new_order: {ProductName, OrderDate, Hardness, Spec}, k: 5}
-   → top-5 歷史相似單
-5. order_store update {patch: {history_matches}}
-6. check_schedule {product_id, qty, customer_desired_lead_days, surface_treatment_lead_days: 4}
-   → 算最快交期 / gap_days
-7. order_store update {patch: {schedule_check}}
-8. calc_cost {product_id, bom, qty, customer_tier: "tier_A"}
-   → 底價
-9. order_store update {patch: {cost_baseline, status: "awaiting_rfq_approval"}}
-10. line_notify {hold_id, gate: "gate-pre-rfq", summary, options: ["發詢價","修改名單","取消"]}
-    → 推老闆 LINE，**等老闆訊息回來才繼續**
-11. order_store append_audit {entry: {level:"HOLD", gate:"gate-pre-rfq", ...}}
+   → auto-writeback engineering_read + status=analyzing
+   → stdout slim summary (product_id, hardness, anti_static_required...)
+   ⛔ 不要 manual order_store update engineering_read！
+
+3. get_history_quote {order_id, k: 5}
+   → auto 從 order.engineering_read 構 new_order
+   → auto-writeback history_matches
+   → stdout slim (top 3 + weighted_avg)
+
+4. check_schedule {order_id, product_id, qty, customer_desired_lead_days, surface_treatment_lead_days: 4}
+   → auto-writeback schedule_check
+   → stdout slim (total_lead_days / achievable)
+
+5. calc_cost {order_id, product_id, qty, customer_tier: "tier_A"}
+   → auto 從 order 拿 BOM
+   → auto-writeback cost_baseline
+   → stdout slim (unit_price / total_cost / markup)
+
+6. order_store update {order_id, patch: {status: "awaiting_rfq_approval"}}
+   ← 短欄位 update，安全
+
+7. line_notify {hold_id, order_id, gate: "gate-pre-rfq", summary: "客戶X / 產品Y / 數量Z / 建議單價 NT$..." (從 step 5 slim 拿), options: ["發詢價","修改名單","取消"]}
+   → 推老闆 LINE，**等老闆訊息回來才繼續**
+
+8. order_store append_audit {order_id, entry: {level:"HOLD", gate:"gate-pre-rfq", ...}}
 ```
+
+**從 11 步剪到 8 步**、大 JSON 搬運 0 次、escape bug 機會 0 次。
 
 ---
 
@@ -222,35 +277,22 @@ cat /tmp/rfq-sup001.json | bash /sandbox/.openclaw/workspace/skills/send_email/c
 2. 看 supplier_replies 數 == 3 了？
    - 還不夠 → user-facing「目前 N/3 家回信，繼續等」
    - 全到了 → 繼續 step 3
-3. compare_suppliers {supplier_ids, customer_requirements: {max_surface_treatment_days, requires_anti_static, qty}}
-   → 拿到 {ranked[], recommendation, trade_off_table, strategies[]}
-4. order_store update {patch: {comparison, status: "awaiting_tradeoff"}}
+3. compare_suppliers {order_id, supplier_ids, customer_requirements: {max_surface_treatment_days, requires_anti_static, qty}}
+   → auto-writeback comparison + status=awaiting_tradeoff
+   → stdout slim：recommendation / strategy / **suggested_line_options** / **suggested_line_extra** / trade_off_table
 
-5. **⛔ 鐵律：options 三個都動態，絕對不可硬寫死！**
-   令 R = comparison.ranked         （已按分數排序，R[0] 是 AI 推薦）
-   令 S = comparison.strategies[0]   （AI 算出的最佳業務策略，可能是議價/談交期/談放寬規格）
-   options = [
-     `選 ${R[0].name}（AI 推薦）`,    // ← AI 判斷的 winner
-     `改選 ${R[1].name}`,              // ← 次優 fallback
-     S ? S.short_label : "取消"         // ← AI 策略建議（wow point）
-   ]
-   summary 必須包含三段：
-     a. recommendation.headline + one_liner（AI 為何推薦）
-     b. trade_off_table（3 家完整對比 + 分數）
-     c. strategies[0].headline + rationale（AI 業務策略 + 建議話術）
+4. **⛔ 鐵律：options 直接用 stdout 的 suggested_line_options，不要自己拼！**
+   compare_suppliers 已經算好 3 個動態 options + extra context。
 
-6. line_notify {
+5. line_notify {
      hold_id, order_id,
      gate: "gate-2-tradeoff-decision",
-     summary: `三家報價回來了。\n\n${comparison.recommendation.headline}\n理由：${comparison.recommendation.one_liner}\n\n完整對比：\n${comparison.trade_off_table}\n\n${S ? S.headline + '\n' + S.rationale : ''}`,
-     options: <上面 step 5 動態組的 options>,
-     // ⚠️ 把 ranked + strategy 存進 pending JSON，[LINE_CB] 才能 lookup
-     extra: {
-       ranked_supplier_ids: [R[0].supplier_id, R[1].supplier_id],
-       strategy: S || null   // ← 含 alternative_supplier_id、預估省多少
-     }
+     summary: `三家報價回來了。\n${slim.recommendation.headline}\n理由：${slim.recommendation.one_liner}\n\n完整對比：\n${slim.trade_off_table}\n\n${slim.strategy ? slim.strategy.headline : ''}`,
+     options: slim.suggested_line_options,    // ← 直接套
+     extra: slim.suggested_line_extra         // ← 直接套（含 ranked_supplier_ids + strategy）
    }
-7. order_store append_audit {gate:"gate-2-tradeoff-decision", ai_recommendation: R[0].supplier_id, ai_strategy: S?.id || null}
+
+6. order_store append_audit {gate:"gate-2-tradeoff-decision", ai_recommendation: slim.recommendation.supplier_id, ai_strategy: slim.strategy?.id || null}
 ```
 
 **為什麼第三個 option 不是「取消」**：AI agent 的 wow point 不是「會比較表格」，是**像資深業務一樣思考**。AI 看到「客戶 ESD 把選項擋到只剩貴的」→ 主動提出「跟客戶談放寬規格 → 改用順興省 12% NT$10,000」+ 給話術 — 這才是值得 demo 的場景。

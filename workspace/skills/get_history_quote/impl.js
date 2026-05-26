@@ -14,10 +14,30 @@
  */
 
 const fs = require('fs/promises');
+const fsSync = require('fs');
 const path = require('path');
+const { writebackToOrder, findOrdersDir } = require('../_lib/order_writeback');
 
 const SKILL_DIR = __dirname;
 const CSV_PATH = path.join(SKILL_DIR, 'data', 'historical_orders.csv');
+
+// 從 order 自動構 new_order — agent 不用打 ProductName / Hardness / Spec
+function buildNewOrderFromStore(order_id) {
+  try {
+    const p = path.join(findOrdersDir(), `${order_id}.json`);
+    if (!fsSync.existsSync(p)) return null;
+    const order = JSON.parse(fsSync.readFileSync(p, 'utf8'));
+    const er = order?.engineering_read;
+    if (!er) return null;
+    const spec = er.specs || {};
+    return {
+      ProductName: er.product_name_zh || er.product_name_en || er.product_id,
+      OrderDate: (order.received_at || new Date().toISOString()).slice(0, 10),
+      Hardness: spec.hardness_shore_a,
+      Spec: [spec.outer_diameter_mm, spec.coating_length_mm, spec.shaft_total_length_mm].filter(Number.isFinite)
+    };
+  } catch { return null; }
+}
 
 async function readStdin() {
   return new Promise((resolve, reject) => {
@@ -106,8 +126,15 @@ function computeSimilarityScore(newOrder, oldOrder) {
 
 // ─── main ───────────────────────────────────────────────────
 async function main() {
-  const { new_order, k = 5 } = await readStdin();
-  if (!new_order) throw new Error('missing new_order in stdin');
+  const input = await readStdin();
+  let { new_order, k = 5, order_id } = input;
+
+  // 如果 agent 只給 order_id 沒給 new_order → 自動從 order 拉
+  if (!new_order && order_id) {
+    new_order = buildNewOrderFromStore(order_id);
+    if (!new_order) throw new Error(`order_id=${order_id} 找不到 / 還沒 read_drawing`);
+  }
+  if (!new_order) throw new Error('missing new_order in stdin (或請帶 order_id 自動從 order 拿)');
 
   const raw = await fs.readFile(CSV_PATH, 'utf8');
   const orders = parseCSV(raw);
@@ -157,7 +184,38 @@ async function main() {
     }
   };
 
-  process.stdout.write(JSON.stringify(output));
+  // Auto-writeback
+  let writebackResult = null;
+  if (order_id) {
+    writebackResult = writebackToOrder({
+      order_id,
+      patch: { history_matches: output },
+      audit: {
+        level: 'INFO',
+        msg: `history matched: top ${output.matches.length}, weighted unit price ${output.weighted_avg_unit_price ?? 'n/a'}`,
+        skill: 'get_history_quote',
+        matches_count: output.matches.length,
+        weighted_avg_unit_price: output.weighted_avg_unit_price
+      }
+    });
+  }
+
+  if (order_id && writebackResult && writebackResult.ok) {
+    // Slim
+    process.stdout.write(JSON.stringify({
+      order_id,
+      writeback: writebackResult,
+      top_matches: output.matches.slice(0, 3).map(m => ({
+        OrderID: m.OrderID, ProductName: m.ProductName, Spec: m.Spec, score: m.score
+      })),
+      total_matches: output.matches.length,
+      weighted_avg_unit_price: output.weighted_avg_unit_price,
+      historical_orders_scanned: output._meta.historical_orders_scanned,
+      note: 'history_matches 完整內容已寫回 order_store。'
+    }));
+  } else {
+    process.stdout.write(JSON.stringify({ ...output, writeback: writebackResult }));
+  }
 }
 
 main().catch(err => {

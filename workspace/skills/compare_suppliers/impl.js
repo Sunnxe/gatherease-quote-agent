@@ -12,6 +12,7 @@
 
 const fs = require('fs/promises');
 const path = require('path');
+const { writebackToOrder } = require('../_lib/order_writeback');
 
 const SKILL_DIR = __dirname;
 const SUPPLIERS_JSON = path.join(SKILL_DIR, 'data', 'suppliers.json');
@@ -98,7 +99,8 @@ function buildReasons(s, all, requiresAntiStatic, maxDays) {
 }
 
 async function main() {
-  const { supplier_ids, customer_requirements = {} } = await readStdin();
+  const input = await readStdin();
+  const { supplier_ids, customer_requirements = {}, order_id } = input;
   if (!Array.isArray(supplier_ids)) throw new Error('supplier_ids must be array');
 
   const raw = await fs.readFile(SUPPLIERS_JSON, 'utf8');
@@ -177,7 +179,7 @@ async function main() {
   const qty = customer_requirements.qty || 200;  // 默認 demo qty
   const strategies = generateStrategies(ranked, candidates, customer_requirements, qty);
 
-  process.stdout.write(JSON.stringify({
+  const output = {
     candidates,
     ranked,
     recommendation,
@@ -190,7 +192,62 @@ async function main() {
       version: 'v3-strategic',
       finished_at: new Date().toISOString()
     }
-  }));
+  };
+
+  // Auto-writeback
+  let writebackResult = null;
+  if (order_id) {
+    writebackResult = writebackToOrder({
+      order_id,
+      patch: { comparison: output, status: 'awaiting_tradeoff' },
+      audit: {
+        level: 'INFO',
+        msg: `compared ${ranked.length} suppliers; AI 推薦 ${recommendation?.name || 'none'}`,
+        skill: 'compare_suppliers',
+        ai_recommendation: recommendation?.supplier_id,
+        ai_strategy: strategies[0]?.id
+      }
+    });
+  }
+
+  if (order_id && writebackResult && writebackResult.ok) {
+    // Slim — 給 agent 看 ranked top 2 + 推薦 + 策略，方便構 line_notify
+    const R = ranked;
+    const S = strategies[0];
+    process.stdout.write(JSON.stringify({
+      order_id,
+      writeback: writebackResult,
+      recommendation: recommendation ? {
+        supplier_id: recommendation.supplier_id,
+        name: recommendation.name,
+        score: recommendation.score,
+        headline: recommendation.headline,
+        one_liner: recommendation.one_liner
+      } : null,
+      ranked_top2: R.slice(0, 2).map(r => ({
+        supplier_id: r.supplier_id, name: r.name, score: r.score, disqualified: r.disqualified
+      })),
+      strategy: S ? {
+        id: S.id,
+        short_label: S.short_label,
+        headline: S.headline,
+        alternative_supplier_id: S.alternative_supplier_id,
+        estimated_total_savings_twd: S.estimated_total_savings_twd,
+        estimated_savings_pct: S.estimated_savings_pct
+      } : null,
+      trade_off_table,
+      // line_notify 用：3 個動態 options
+      suggested_line_options: [
+        R[0] && !R[0].disqualified ? `選 ${R[0].name}（AI 推薦）` : '取消',
+        R[1] ? `改選 ${R[1].name}` : '取消',
+        S ? S.short_label : '取消'
+      ],
+      suggested_line_extra: { ranked_supplier_ids: R.slice(0, 2).map(r => r.supplier_id), strategy: S || null },
+      note: 'comparison 完整內容已寫回 order_store。要 push LINE gate-2，options/extra 已備妥。'
+    }));
+  } else {
+    process.stdout.write(JSON.stringify({ ...output, writeback: writebackResult }));
+  }
 }
 
 /**

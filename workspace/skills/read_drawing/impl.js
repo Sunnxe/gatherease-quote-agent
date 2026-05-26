@@ -21,6 +21,7 @@ const fs = require('fs/promises');
 const fsSync = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { writebackToOrder } = require('../_lib/order_writeback');
 
 const SKILL_DIR = __dirname;
 const KNOWLEDGE_PATH = path.join(SKILL_DIR, 'knowledge.txt');
@@ -258,8 +259,7 @@ async function main() {
     result.fallback_reason = err.message;
   }
 
-  const output = {
-    order_id,
+  const fullEngineeringRead = {
     ...result,
     _meta: {
       skill: 'read_drawing',
@@ -271,7 +271,59 @@ async function main() {
     }
   };
 
-  process.stdout.write(JSON.stringify(output));
+  // ─── Auto-writeback to order_store (避免 agent 手抄大 JSON) ───
+  // 若有 order_id：直接寫回 order JSON、agent 收到 slim summary 即可。
+  // 沒 order_id 時退回舊行為（吐完整 JSON 給 caller 自己處理）。
+  let writebackResult = null;
+  if (order_id) {
+    writebackResult = writebackToOrder({
+      order_id,
+      patch: {
+        engineering_read: fullEngineeringRead,
+        status: 'analyzing'
+      },
+      audit: {
+        level: 'INFO',
+        msg: 'engineering read written',
+        skill: 'read_drawing',
+        vision_used: result.vision_used,
+        model: result.model,
+        product_id: result.product_id
+      }
+    });
+  }
+
+  if (order_id && writebackResult && writebackResult.ok) {
+    // Slim summary — agent 只看摘要，不用搬 BOM / specs 那大包
+    const slim = {
+      order_id,
+      writeback: writebackResult,                    // {ok:true, fields_updated:[...]}
+      product_id: result.product_id,
+      product_name_zh: result.product_name_zh,
+      product_name_en: result.product_name_en,
+      drawing_version: result.drawing_version,
+      industry_match: result.industry_match,
+      outer_diameter_mm: result.specs?.outer_diameter_mm,
+      coating_length_mm: result.specs?.coating_length_mm,
+      hardness_shore_a: result.specs?.hardness_shore_a,
+      coating_material: result.specs?.coating_material,
+      anti_static_required: result.quality_requirements?.anti_static_required,
+      bom_part_count: Array.isArray(result.bom) ? result.bom.length : 0,
+      vision_used: result.vision_used,
+      model: result.model,
+      confidence: result.confidence,
+      note: 'engineering_read 完整內容已寫回 order_store；agent 不用再 update。'
+    };
+    process.stdout.write(JSON.stringify(slim));
+  } else {
+    // 沒 order_id 或寫回失敗 — 退回舊行為，吐完整 JSON
+    const fullOutput = {
+      order_id: order_id || null,
+      writeback: writebackResult,
+      ...fullEngineeringRead
+    };
+    process.stdout.write(JSON.stringify(fullOutput));
+  }
 }
 
 main().catch(err => {

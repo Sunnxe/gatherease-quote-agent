@@ -7,11 +7,23 @@
  */
 
 const fs = require('fs/promises');
+const fsSync = require('fs');
 const path = require('path');
+const { writebackToOrder, findOrdersDir } = require('../_lib/order_writeback');
 
 const SKILL_DIR = __dirname;
 const COST_CSV = path.join(SKILL_DIR, 'data', 'bom_cost_data.csv');
 const SUPPLIERS_JSON = path.join(SKILL_DIR, 'data', 'suppliers.json');
+
+// 從 order JSON 拿 engineering_read.bom — 讓 agent 不用搬 BOM 大陣列
+function readOrderBom(order_id) {
+  try {
+    const p = path.join(findOrdersDir(), `${order_id}.json`);
+    if (!fsSync.existsSync(p)) return null;
+    const order = JSON.parse(fsSync.readFileSync(p, 'utf8'));
+    return order?.engineering_read?.bom || null;
+  } catch { return null; }
+}
 
 const OVERHEAD_PCT = 12;
 const MARKUP_TABLE = { tier_A: 32, tier_B: 24, tier_C: 18 };
@@ -153,8 +165,54 @@ async function calcCost({ product_id, bom, qty, surface_treatment_supplier_id, c
 
 async function main() {
   const input = await readStdin();
+  const { order_id } = input;
+
+  // 如果 agent 沒給 bom 但有 order_id → 從 order 自動拿
+  // 這是 anti-hallucination 的另一層：agent 連 BOM 都不用打、不會抄錯
+  if (!input.bom && order_id) {
+    const bomFromOrder = readOrderBom(order_id);
+    if (bomFromOrder) {
+      input.bom = bomFromOrder;
+    }
+  }
+
   const result = await calcCost(input);
-  process.stdout.write(JSON.stringify(result));
+
+  // Auto-writeback
+  let writebackResult = null;
+  if (order_id) {
+    writebackResult = writebackToOrder({
+      order_id,
+      patch: { cost_baseline: result },
+      audit: {
+        level: 'INFO',
+        msg: `cost calculated: unit NT$${result.suggested_unit_price_twd}`,
+        skill: 'calc_cost',
+        unit_cost_twd: result.unit_cost_twd,
+        suggested_unit_price_twd: result.suggested_unit_price_twd
+      }
+    });
+  }
+
+  if (order_id && writebackResult && writebackResult.ok) {
+    // Slim: 給 agent 看的關鍵數字
+    process.stdout.write(JSON.stringify({
+      order_id,
+      writeback: writebackResult,
+      product_id: result.product_id,
+      qty: result.qty,
+      unit_direct_cost_twd: result.unit_direct_cost_twd,
+      unit_cost_with_overhead_twd: result.unit_cost_with_overhead_twd,
+      suggested_unit_price_twd: result.suggested_unit_price_twd,
+      total_cost_twd: result.total_cost_twd,
+      suggested_revenue_twd: result.suggested_revenue_twd,
+      markup_pct_applied: result.markup_pct_applied,
+      surface_treatment_supplier_used: result.surface_treatment_supplier_used,
+      note: 'cost_baseline 完整 BOM breakdown 已寫回 order_store。'
+    }));
+  } else {
+    process.stdout.write(JSON.stringify({ ...result, writeback: writebackResult }));
+  }
 }
 
 main().catch(err => {
