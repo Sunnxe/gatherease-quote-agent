@@ -73,13 +73,41 @@ done
 
 echo ""
 echo "▶ 也把 workspace 5 個 .md + .env 寫進 sandbox"
-for md in AGENTS.md SOUL.md IDENTITY.md USER.md TOOLS.md; do
+for md in AGENTS.md SOUL.md IDENTITY.md USER.md TOOLS.md HEARTBEAT.md; do
   if [ -f "workspace/$md" ]; then
     B64=$(base64 -w0 "workspace/$md" 2>/dev/null || base64 "workspace/$md" | tr -d '\n')
     echo "  → $SANDBOX_WS/$md"
     nemoclaw "$SANDBOX" exec -- bash -c "echo '$B64' | base64 -d > '$SANDBOX_WS/$md'"
   fi
 done
+
+echo ""
+echo "▶ Deploy host data/ 內 reference data → sandbox workspace/data/"
+# host repo:
+#   data/             ← reference data (suppliers.json, schedule.json, BOM 等)
+#   workspace/data/   ← runtime data (orders/ 跑時生成)
+# sandbox 內 agent 預期在 /sandbox/.openclaw/workspace/data/ 找這些 reference data。
+# 不 deploy 的話 agent 要自己 find 多繞一個 round-trip。
+nemoclaw "$SANDBOX" exec -- mkdir -p "$SANDBOX_WS/data"
+if [ -d "data" ]; then
+  while IFS= read -r f; do
+    rel="${f#data/}"
+    if [ -f "$f" ]; then
+      size=$(wc -c < "$f")
+      if [ "$size" -gt 102400 ]; then
+        echo "  ⊘ data/$rel ($size bytes) — SKIP (>100KB)"
+        continue
+      fi
+      parent=$(dirname "$rel")
+      if [ "$parent" != "." ]; then
+        nemoclaw "$SANDBOX" exec -- mkdir -p "$SANDBOX_WS/data/$parent"
+      fi
+      B64=$(base64 -w0 "$f" 2>/dev/null || base64 "$f" | tr -d '\n')
+      echo "  → data/$rel ($size bytes)"
+      nemoclaw "$SANDBOX" exec -- bash -c "echo '$B64' | base64 -d > '$SANDBOX_WS/data/$rel'"
+    fi
+  done < <(find data -type f 2>/dev/null)
+fi
 
 if [ -f .env ]; then
   # 永遠把 BRIDGE_MODE=outbox 加進去（host .env 沒這行，但 sandbox 一定要）

@@ -120,7 +120,41 @@ async function pollOutbox() {
       // SMTP 真寄
       try {
         log('outbox', `→ SMTP sending ${f}: to=${payload.request?.to} subject="${payload.request?.subject}"`);
+
+        // ⚠️ Attachment path 來自 sandbox (/sandbox/...)，host 看不到。
+        // 先把每個 attachment 從 sandbox 拉到 host /tmp，rewrite path。
+        if (Array.isArray(payload.request?.attachments)) {
+          const fixedAttachments = [];
+          for (const att of payload.request.attachments) {
+            if (!att.path) { fixedAttachments.push(att); continue; }
+            if (att.path.startsWith('/sandbox/')) {
+              const tmpHost = `/tmp/bridge-attachment-${Date.now()}-${Math.random().toString(36).slice(2,8)}-${(att.filename||'att.bin').replace(/[^\w.\-]/g,'_')}`;
+              try {
+                // 用 nemoclaw exec base64 把 sandbox 內檔讀出來
+                const b64out = await nexec(`nemoclaw ${SANDBOX} exec -- base64 -w0 ${att.path}`, 15000);
+                fsSync.writeFileSync(tmpHost, Buffer.from(b64out.trim(), 'base64'));
+                log('outbox', `  📎 pulled ${att.path} → ${tmpHost} (${fsSync.statSync(tmpHost).size} bytes)`);
+                fixedAttachments.push({ ...att, path: tmpHost, _sandbox_origin: att.path });
+              } catch (e) {
+                log('outbox', `  ⚠️ pull attachment ${att.path} failed: ${e.message}, skipping`);
+              }
+            } else {
+              fixedAttachments.push(att);
+            }
+          }
+          payload.request.attachments = fixedAttachments;
+        }
+
         const result = await smtpSend(payload.request);
+
+        // 清掉 host /tmp 暫存 attachment
+        if (Array.isArray(payload.request?.attachments)) {
+          for (const att of payload.request.attachments) {
+            if (att._sandbox_origin && att.path?.startsWith('/tmp/bridge-attachment-')) {
+              try { fsSync.unlinkSync(att.path); } catch {}
+            }
+          }
+        }
         payload.status = 'sent';
         payload.sent_at = new Date().toISOString();
         payload.message_id = result.message_id;
