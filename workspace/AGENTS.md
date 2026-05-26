@@ -81,22 +81,49 @@ GatherRoller 公司 email = `s778906@gmail.com`，**所有客戶詢價跟廠商�
 
 **訊號**：webhook 把老闆按鈕注入成新 user message：「老闆已決定 hold_id=xxx choice=0 action=發詢價」
 
+**⛔ 鐵律：必須真的 call send_email × 3 次，不可以 mock supplier_replies 跳過！**
+等廠商真回信再 compare_suppliers，不要自己編三家報價。
+
 **動作**：
 
 ```
-1. order_store get {order_id} 拿回當前 order state
-2. 從 data/suppliers.json 拿 3 個 supplier email
-3. 對每個 supplier call send_email:
+1. order_store get {order_id} → 拿 order state (含 incoming.drawing_attachment_path)
+2. cat /sandbox/.openclaw/workspace/data/suppliers.json → 拿 3 個 supplier email
+   (現在 3 家都是 sunny.liao@gatherease.ai，Demo 由 Sunny 扮 3 家分別回信)
+3. **DRAWING_PATH = order.incoming.drawing_attachment_path** (例 /sandbox/.../incoming/_______.pdf)
+   ⚠️ 如果 incoming.drawing_attachment_path 是 null/missing
+   → 改抓 engineering_read._meta.drawing_path 或 inbox JSON 內 attachments[0].saved_path
+
+4. 對每個 supplier (SUP-001/002/003) 各 call send_email 一次:
    send_email {
      to: <supplier_email>,
-     subject: "【RFQ】" + product_name + " × " + qty,
-     body: "請貴司報價，產品/數量/規格如下...",
-     attachments: [{path: <drawing_pdf_path>, filename: "drawing.pdf"}]
+     subject: "【RFQ-<order_id>】" + product_name + " × " + qty + " - <supplier_name>",
+     body: "請貴司報價，產品/數量/規格如下...圖紙見附件，三個工作天內回覆。",
+     attachments: [{"path": DRAWING_PATH, "filename": "drawing.pdf"}]
+                   ⚠️ ⚠️ ⚠️ 必須帶 attachments！body 寫「圖紙見附件」就要真附！
+                   ⚠️ 不可以 attachments: [] 寄空附件
    }
-4. order_store update {patch: {rfq_sent_at, rfq_sent_to: [emails], status: "rfq_sent"}}
-5. 跟 user 講「已寄 RFQ 給 3 家代工廠，等待回信」
-6. (背景) 之後我 poll inbox_watch 等廠商回信
+
+5. order_store update {patch: {rfq_sent_to: ["SUP-001","SUP-002","SUP-003"], rfq_sent_at, status: "rfq_sent"}}
+6. 跟 user 講「已寄 RFQ 給 3 家代工廠，等待回信」
+7. (背景) 之後我 poll inbox_watch mode=supplier_reply 等廠商真回信，**不自己編 supplier_replies**
 ```
+
+**完整 send_email call 範例（含中文 + 含特殊字元安全 heredoc）**：
+
+```bash
+cat > /tmp/rfq-sup001.json <<'EOF'
+{
+  "to": "sunny.liao@gatherease.ai",
+  "subject": "【RFQ-QUO-2026-0001】矽膠抗靜電包膠輪 × 200 - 全鋼表處",
+  "body": "陳廠長 您好，\n\n請貴司針對下列產品報價：\n產品：矽膠抗靜電包膠輪\n數量：200 隻\n規格：外徑 50mm，塗覆 598mm\n硬度 Shore A 40 ±5\n表面處理：去銳角、毛邊\n\n圖紙見附件。\n請三個工作天內回覆單價與交期。\n\nGatherRoller 敬上",
+  "attachments": [{"path": "/sandbox/.openclaw/workspace/data/incoming/_______.pdf", "filename": "drawing.pdf"}]
+}
+EOF
+cat /tmp/rfq-sup001.json | bash /sandbox/.openclaw/workspace/skills/send_email/cli.sh
+```
+
+**注意**：body 含「NT$」金額 / 中文逗號等特殊字元時**必須用 cat <<'EOF' heredoc**，不可用 printf（會踩 `$` format spec bug）。
 
 ---
 
