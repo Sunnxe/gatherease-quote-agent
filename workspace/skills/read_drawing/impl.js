@@ -25,8 +25,17 @@ const crypto = require('crypto');
 const SKILL_DIR = __dirname;
 const KNOWLEDGE_PATH = path.join(SKILL_DIR, 'knowledge.txt');
 
-const NEMOTRON_BASE = 'https://integrate.api.nvidia.com/v1';
-const VISION_MODEL = 'meta/llama-3.2-90b-vision-instruct';
+// 走 NemoClaw managed inference route (inference.local)，不直連
+// integrate.api.nvidia.com — sandbox squid proxy 擋外連 NIM 但 inference.local
+// 是 NemoClaw 內部 transparent proxy，所有 NIM model 都過得了。
+// API key 也不需要 — inference.local 走 NemoClaw 預設 key。
+const NEMOTRON_BASE = process.env.NEMOCLAW_INFERENCE_BASE || 'https://inference.local/v1';
+
+// Vision model — 用 NVIDIA Nemotron VL 家族 (demo 故事：
+// 「Super 當大腦推理 + Nano VL 當眼睛看圖」全 NVIDIA Nemotron multi-agent 架構)
+// 注意：必須在 openclaw.json 註冊，否則 inference-fix.js guard 強制 redirect
+// 到主模型。跑 ./scripts/add-vision-model.sh 註冊。
+const VISION_MODEL = process.env.READ_DRAWING_VISION_MODEL || 'nvidia/llama-3.1-nemotron-nano-vl-8b-v1';
 
 async function readStdin() {
   return new Promise((resolve, reject) => {
@@ -86,8 +95,9 @@ async function pdfFirstPageToPngBuffer(pdfPath) {
 
 // ─── Nemotron Vision API ───
 async function callNemotronVision({ pngBuf, customerName, drawingPdfPath }) {
-  const apiKey = process.env.NVIDIA_API_KEY;
-  if (!apiKey) throw new Error('NVIDIA_API_KEY env var not set');
+  // inference.local 不需要 NVIDIA_API_KEY (走 NemoClaw managed route)
+  // 但如果有 set 還是帶上，以防直連 fallback
+  const apiKey = process.env.NVIDIA_API_KEY || 'unused';
 
   const pngB64 = pngBuf.toString('base64');
   // NVIDIA NIM 對單 image 限制 ~180 KB base64 (LLama vision)
