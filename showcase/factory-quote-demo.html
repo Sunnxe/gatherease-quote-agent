@@ -1319,21 +1319,29 @@ function roleEmoji(role) {
   const map = {
     system: '⚙️',
     user: '👤',
-    assistant: '🧠',
-    tool: '🔧',
-    'tool-call': '🔧',
-    'tool-result': '📊',
-    'tool-output': '📊',
+    assistant: '💬',
+    tool_call: '🔧',
+    tool_result: '📊',
     thinking: '💭'
   };
   return map[role] || '·';
 }
+function roleLabel(role) {
+  const map = {
+    user: 'USER (廖老闆 / 系統)',
+    assistant: 'ASSISTANT (agent 回應)',
+    thinking: 'AGENT THINKING (內部 reasoning)',
+    tool_call: 'TOOL CALL',
+    tool_result: 'TOOL RESULT'
+  };
+  return map[role] || role.toUpperCase();
+}
 function roleClass(role) {
-  if (role === 'system') return 'at-system';
   if (role === 'user') return 'at-user';
   if (role === 'assistant') return 'at-assistant';
-  if (role.startsWith('tool')) return 'at-tool-call';
   if (role === 'thinking') return 'at-thinking';
+  if (role === 'tool_call') return 'at-tool-call';
+  if (role === 'tool_result') return 'at-tool-result';
   return 'at-user';
 }
 async function refreshAgentThinking(){
@@ -1350,12 +1358,14 @@ async function refreshAgentThinking(){
     }
     el.innerHTML = data.events.map(e => {
       const emoji = roleEmoji(e.role);
+      const label = roleLabel(e.role);
       const cls = roleClass(e.role);
       const toolBadge = e.tool_name ? `<span class="at-tool">→ ${e.tool_name}</span>` : '';
+      const errBadge = e.is_error ? `<span class="at-tool" style="color:#ff7a7a">✗ error</span>` : '';
       const safeText = (e.text || '')
         .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
       return `<div class="at-row ${cls}">
-        <div class="at-role">${emoji} ${e.role.toUpperCase()} ${toolBadge}</div>
+        <div class="at-role">${emoji} ${label} ${toolBadge}${errBadge}</div>
         <div class="at-text">${safeText}</div>
       </div>`;
     }).join('');

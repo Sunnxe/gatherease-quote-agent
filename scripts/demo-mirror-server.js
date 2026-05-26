@@ -268,28 +268,64 @@ app.get('/api/agent-session', async (req, res) => {
         10000
       );
 
+      // OpenClaw session jsonl 真實 schema:
+      // 每行 {type, id, parentId, timestamp, ...}
+      //  type=session/model_change/thinking_level_change/custom/custom_message  → skip (metadata)
+      //  type=message + message.role=user → content array of {type:"text",text:"..."}
+      //  type=message + message.role=assistant → content array 可能含
+      //     {type:"thinking", thinking:"..."} + {type:"text",text:"..."} + {type:"toolCall",id,name,arguments}
+      //  type=message + message.role=toolResult → content array of {type:"text",text:"..."}
       const events = [];
       for (const line of content.split('\n')) {
         if (!line.trim()) continue;
         try {
           const obj = JSON.parse(line);
-          // 抽出有用 fields
-          const role = obj.role || obj.type || obj.kind || 'unknown';
-          let text = '';
-          if (typeof obj.content === 'string') text = obj.content;
-          else if (Array.isArray(obj.content)) {
-            text = obj.content.map(c => c.text || c.content || JSON.stringify(c).slice(0,200)).join(' ');
-          } else if (obj.content && typeof obj.content === 'object') {
-            text = JSON.stringify(obj.content).slice(0, 500);
-          } else if (obj.message) text = obj.message;
-          else text = JSON.stringify(obj).slice(0, 300);
+          if (obj.type !== 'message') continue;  // skip session/model_change/etc
+          const msg = obj.message;
+          if (!msg) continue;
+          const role = msg.role;
+          const ts = obj.timestamp;
+          const items = Array.isArray(msg.content) ? msg.content : [];
 
-          events.push({
-            role,
-            tool_name: obj.tool_name || obj.name || null,
-            text: text.slice(0, 600),  // truncate long content
-            ts: obj.ts || obj.timestamp || obj.createdAt || null
-          });
+          // toolResult: content 內就是工具回應
+          if (role === 'toolResult') {
+            const text = items.map(c => c.text || JSON.stringify(c)).join('\n');
+            events.push({
+              role: 'tool_result',
+              tool_name: msg.toolName || null,
+              text: text.slice(0, 800),
+              ts,
+              is_error: !!msg.isError
+            });
+            continue;
+          }
+
+          // user / assistant 內可能含多個 items (thinking + text + toolCall)
+          for (const it of items) {
+            if (it.type === 'thinking') {
+              events.push({ role: 'thinking', text: (it.thinking || '').slice(0, 800), ts });
+            } else if (it.type === 'text') {
+              events.push({ role: role || 'assistant', text: (it.text || '').slice(0, 800), ts });
+            } else if (it.type === 'toolCall') {
+              const args = typeof it.arguments === 'string'
+                ? it.arguments
+                : JSON.stringify(it.arguments || {}, null, 2);
+              events.push({
+                role: 'tool_call',
+                tool_name: it.name || null,
+                text: args.slice(0, 800),
+                ts
+              });
+            } else if (it.type === 'tool_use') {
+              const args = JSON.stringify(it.input || {}, null, 2);
+              events.push({
+                role: 'tool_call',
+                tool_name: it.name || null,
+                text: args.slice(0, 800),
+                ts
+              });
+            }
+          }
         } catch {
           // 非 JSON line, skip
         }
