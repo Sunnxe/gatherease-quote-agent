@@ -349,7 +349,7 @@ nemoclaw gatherease-quote-agent exec -- grep -c detectBridgeMode /sandbox/.openc
 - **`__dirname.startsWith('/sandbox/')` 是最穩的「sandbox vs host」偵測**——不依賴 .env / env var
 - **改 impl.js 後一定要 redeploy_skills_to_workspace.sh**——sandbox 副本不自動同步
 - **Secret 永遠不 echo**：API key、LINE secret、Gmail App Password 一旦在 chat 出現要警告 + 撤銷
-- **dummy data 不是真客戶名**：鴻碩電子 / 全鋼 / 永鎵 / 新鎏鍍都是合成 persona
+- **dummy data 不是真客戶名**：鴻碩電子 / 全鋼 / 大同 / 順興都是合成 persona
 
 ---
 

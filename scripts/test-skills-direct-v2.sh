@@ -53,7 +53,7 @@ run_skill "calc_cost" '{"product_id":"Anti-Static Silicone Roller","bom":[{"part
 
 run_skill "compare_suppliers" '{"supplier_ids":["SUP-001","SUP-002","SUP-003"],"customer_requirements":{"max_surface_treatment_days":5,"requires_anti_static":true}}' 30
 
-run_skill "generate_quote_pdf" '{"order_id":"TEST-001","customer_name":"昕叡電子有限公司","customer_email":"sunnxebusiness@gmail.com","product_name":"Anti-Static Silicone Rubber Roller A1","product_name_zh":"矽膠抗靜電包膠輪 A1","qty":200,"unit_price_twd":1612,"total_twd":322400,"lead_days":14,"supplier_choice":"永鎵精密表面","terms":"30% T/T deposit","signed_by":"廖老闆（測試）"}' 45
+run_skill "generate_quote_pdf" '{"order_id":"TEST-001","customer_name":"昕叡電子有限公司","customer_email":"sunnxebusiness@gmail.com","product_name":"Anti-Static Silicone Rubber Roller A1","product_name_zh":"矽膠抗靜電包膠輪 A1","qty":200,"unit_price_twd":1612,"total_twd":322400,"lead_days":14,"supplier_choice":"大同精密表面","terms":"30% T/T deposit","signed_by":"廖老闆（測試）"}' 45
 
 # ─── 對外 4 個（egress 通了才能 work）─────────────────
 run_skill "read_drawing" '{"order_id":"TEST-001","drawing_pdf_path":"data/sample-drawing.pdf","customer_name":"昕叡電子"}' 45

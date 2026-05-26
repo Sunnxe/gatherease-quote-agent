@@ -187,8 +187,8 @@ if (require.main === module) {
   pushHoldToBoss({
     hold_id: `test-${Date.now()}`,
     gate: 'gate-2-tradeoff-decision',
-    summary: '⚖️ 多維權衡測試訊息\n要壓進客戶 10 天 + 抗靜電認證：\n• 全鋼表處 $320 / 9 天 / ❌\n• 永鎵 $420 / 4 天 / ✅\n• 新鎏鍍 $370 / 7 天 / ❌\n→ 只有永鎵同時滿足',
-    options: ['選永鎵（搶單）', '改選新鎏鍍 + 延 3 天', '取消']
+    summary: '⚖️ 多維權衡測試訊息\n要壓進客戶 10 天 + 抗靜電認證：\n• 全鋼表處 $320 / 9 天 / ❌\n• 大同 $420 / 4 天 / ✅\n• 順興 $370 / 7 天 / ❌\n→ 只有大同同時滿足',
+    options: ['選大同（搶單）', '改選順興 + 延 3 天', '取消']
   })
     .then(r => { console.log('Boss replied:', r); process.exit(0); })
     .catch(e => { console.error(e); process.exit(1); });

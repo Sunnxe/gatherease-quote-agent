@@ -12,7 +12,7 @@
       "supplier_used": "SUP-002",
       "lead_time_days": 11,
       "outcome": "won",
-      "notes": "用永鎵代工，準時交。客戶滿意。"
+      "notes": "用大同代工，準時交。客戶滿意。"
     },
     {
       "id": "Q-2026-0098",
@@ -25,7 +25,7 @@
       "supplier_used": "SUP-002",
       "lead_time_days": 12,
       "outcome": "won",
-      "notes": "永鎵，準時。"
+      "notes": "大同，準時。"
     },
     {
       "id": "Q-2025-0411",
@@ -38,7 +38,7 @@
       "supplier_used": "SUP-002",
       "lead_time_days": 13,
       "outcome": "won",
-      "notes": "加長版規格，永鎵。"
+      "notes": "加長版規格，大同。"
     },
     {
       "id": "Q-2026-0067",
@@ -51,7 +51,7 @@
       "supplier_used": "SUP-003",
       "lead_time_days": 15,
       "outcome": "won",
-      "notes": "tier-B 客戶，用新鎏鍍。"
+      "notes": "tier-B 客戶，用順興。"
     },
     {
       "id": "Q-2026-0073",

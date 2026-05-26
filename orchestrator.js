@@ -283,7 +283,7 @@ async function main(opts = {}) {
   // ─── STEP 4: planner.check_schedule → 最快交期 ───
   await audit('INFO', { stage: 'step-4', skill: 'check_schedule', agent: 'planner', msg: '生管 agent 查產線排程…' });
 
-  // 先用「最快代工廠」估底（4 天，永鎵）
+  // 先用「最快代工廠」估底（4 天，大同）
   const scheduleBest = await plannerCheckSchedule({
     product_id: drawing.product_id,
     qty: incomingOrder.qty,
@@ -322,7 +322,7 @@ async function main(opts = {}) {
              `歷史 top-5 相似訂單 (score ${history.matches[0].score}~${history.matches[4].score})：\n` +
              history.matches.slice(0, 3).map(m => `  • [${m.OrderDate}] ${m.ProductName} H${m.Hardness} ${m.Spec}`).join('\n') + '\n' +
              `生管：最快 ${scheduleBest.total_lead_time_days} 天 — ${scheduleBest.note}\n\n` +
-             `下一步：發詢價＋圖面給 3 家代工廠（全鋼/永鎵/新鎏鍍）？`,
+             `下一步：發詢價＋圖面給 3 家代工廠（全鋼/大同/順興）？`,
     options: ['發詢價', '修改名單', '取消'],
     mockReply: { action: 'approve_rfq', supplier_ids: supplierShortlist }
   });
@@ -364,10 +364,10 @@ async function main(opts = {}) {
   const bossChoice = await holdForBoss({
     gate: 'gate-2-tradeoff-decision',
     summary: `⚖️ 多維權衡\n要壓進客戶 10 天 + 抗靜電認證：\n${tradeoffSummary}\n\n` +
-             `→ 只有永鎵同時滿足（貴 18% 但 4 天交、唯一抗靜電）\n→ 全鋼便宜但 9 天會 miss、新鎏鍍 7 天也 miss\n` +
+             `→ 只有大同同時滿足（貴 18% 但 4 天交、唯一抗靜電）\n→ 全鋼便宜但 9 天會 miss、順興 7 天也 miss\n` +
              `要搶這張單還是跟客戶談延期？`,
-    options: ['選永鎵（搶單）', '選新鎏鍍 + 跟客戶談延 3 天', '取消報價'],
-    mockReply: { action: 'pick_supplier', supplier_id: 'SUP-002', reason: '搶單，永鎵貴 18% 但唯一達標' }
+    options: ['選大同（搶單）', '選順興 + 跟客戶談延 3 天', '取消報價'],
+    mockReply: { action: 'pick_supplier', supplier_id: 'SUP-002', reason: '搶單，大同貴 18% 但唯一達標' }
   });
 
   // ─── STEP 11: 算最終成本 + 建議價 ───
@@ -387,7 +387,7 @@ async function main(opts = {}) {
   const signoff = await holdForBoss({
     gate: 'gate-3-final-quote-signoff',
     summary: `✍️ 最終報價簽核\n${incomingOrder.customer_name} · ${drawing.product_id} × ${incomingOrder.qty}\n` +
-             `代工：永鎵（$420 · 4 天 · 抗靜電認證）\n` +
+             `代工：大同（$420 · 4 天 · 抗靜電認證）\n` +
              `建議報價：$${finalCost.suggested_unit_price_twd}/支 · 總額 $${finalCost.suggested_revenue_twd.toLocaleString()}\n` +
              `毛利率 ${finalCost.markup_pct_applied}% · 最相似歷史訂單 OrderID ${history.matches[0].OrderID} (score ${history.matches[0].score})\n\n` +
              `→ 親自確認價格、按簽核才會寄出（不可逆動作）`,

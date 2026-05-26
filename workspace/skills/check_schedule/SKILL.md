@@ -38,7 +38,7 @@ exec bash skills/check_schedule/cli.sh
 }
 ```
 
-`surface_treatment_lead_days` 可選——若不指定預設用最快代工 (4 天)；若已知廠商 (譬如老闆選了永鎵 4 天 / 全鋼 9 天) 就帶進去。
+`surface_treatment_lead_days` 可選——若不指定預設用最快代工 (4 天)；若已知廠商 (譬如老闆選了大同 4 天 / 全鋼 9 天) 就帶進去。
 
 **stdout**：
 
@@ -68,5 +68,5 @@ exec bash skills/check_schedule/cli.sh
 
 - **as_of_date = `data/schedule.json` 的 `as_of_date`** (現在 = 2026-05-25)，不要用 `new Date()`——demo 要可重現
 - **不要 hallucinate 排程數字**——全部從 `data/schedule.json` 讀
-- 對廖老闆呈現 trade-off 時清楚講「差 N 天」+ 「靠選最快代工 (永鎵 4 天) 才有機會」+ 「不然要跟客戶談延期」
+- 對廖老闆呈現 trade-off 時清楚講「差 N 天」+ 「靠選最快代工 (大同 4 天) 才有機會」+ 「不然要跟客戶談延期」
 - `achievable: false` 不代表「不接這張單」，是「要 trade-off」——下一步 GATE ③ 多維權衡推老闆決定

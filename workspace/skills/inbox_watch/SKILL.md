@@ -61,13 +61,13 @@ exec bash skills/inbox_watch/cli.sh
       "from_email": "supplier-yongjia@test-gatherease.example",
       "subject": "Re: 【RFQ】矽膠抗靜電包膠輪 A1 × 200 支",
       "received_at": "2026-05-26T01:30:00.000Z",
-      "matched_supplier": { "id": "SUP-002", "name": "永鎵精密表面" },
+      "matched_supplier": { "id": "SUP-002", "name": "大同精密表面" },
       "attachments": [
         {
           "filename": "yongjia-quote.pdf",
           "saved_path": "data/orders/QUO-2026-0001/incoming/yongjia-quote.pdf",
           "size_bytes": 18432,
-          "extracted_text_preview": "報價單 永鎵精密表面 ..."
+          "extracted_text_preview": "報價單 大同精密表面 ..."
         }
       ],
       "extracted": {

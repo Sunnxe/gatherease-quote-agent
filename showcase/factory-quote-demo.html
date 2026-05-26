@@ -1043,21 +1043,21 @@ async function runDemo(){
   const g1 = await gate({
     block:true,
     title:'對外傳送圖面',
-    desc:'Agent 準備發詢價單 + <b>鐵輪工程圖</b>給 3 家<b>表面處理代工廠</b>，詢問<b>價格／交期／品質</b>：<br>① 全鋼表處 ② 永鎵精密 ③ 新鎏鍍（新廠商）<br><br>偵測到圖面將外送，可能涉及核心設計外流，請老闆確認名單。',
+    desc:'Agent 準備發詢價單 + <b>鐵輪工程圖</b>給 3 家<b>表面處理代工廠</b>，詢問<b>價格／交期／品質</b>：<br>① 全鋼表處 ② 大同精密 ③ 順興（新廠商）<br><br>偵測到圖面將外送，可能涉及核心設計外流，請老闆確認名單。',
     okLabel:'確認發送', noLabel:'移除新廠商'
   });
   addLog('hold','對外傳送圖面 → 觸發人類確認','egress/suppliers');
   let toSuppliers;
   if(g1.approved){
     addLog('allow','名單核准，詢價單已發送（圖面僅授權廠商）','mail/rfq');
-    meText('OK 發吧，新鎏鍍那家先留著試試 👍');
+    meText('OK 發吧，順興那家先留著試試 👍');
     botText('報價助手 Agent','已發送詢價給 3 家代工廠 ✅ 我去外面等回報，有結果回來跟您說');
-    toSuppliers = ['全鋼表處','永鎵精密','新鎏鍍'];
+    toSuppliers = ['全鋼表處','大同精密','順興'];
   }else{
     addLog('block','已移除未授權廠商，圖面外流風險解除','egress/suppliers');
     meText('新廠商先拿掉，只發給熟的兩家');
-    botText('報價助手 Agent','收到，已移除新鎏鍍，只發給全鋼、永鎵 ✅ 我去等回報');
-    toSuppliers = ['全鋼表處','永鎵精密'];
+    botText('報價助手 Agent','收到，已移除順興，只發給全鋼、大同 ✅ 我去等回報');
+    toSuppliers = ['全鋼表處','大同精密'];
   }
   stepState('s4','done');
 
@@ -1083,11 +1083,11 @@ async function runDemo(){
   svEmail({reply:true,from:'⬅ 全鋼表處',sub:'Re: 詢價單 RFQ-2026-0518',
     body:`<div class="quote-line"><span>單價</span><b>NT$320</b></div><div class="quote-line"><span>交期</span><b>9 天</b></div><div class="quote-line"><span>良率</span><b>95%</b></div>`});
   await sleep(900);
-  svEmail({reply:true,from:'⬅ 永鎵精密',sub:'Re: 詢價單 RFQ-2026-0518',
+  svEmail({reply:true,from:'⬅ 大同精密',sub:'Re: 詢價單 RFQ-2026-0518',
     body:`<div class="quote-line"><span>單價</span><b>NT$420</b></div><div class="quote-line"><span>交期</span><b>4 天（可急件）</b></div><div class="quote-line"><span>良率</span><b>99%・有抗靜電認證</b></div>`});
   await sleep(900);
-  if(toSuppliers.includes('新鎏鍍')){
-    svEmail({reply:true,from:'⬅ 新鎏鍍',sub:'Re: 詢價單 RFQ-2026-0518',
+  if(toSuppliers.includes('順興')){
+    svEmail({reply:true,from:'⬅ 順興',sub:'Re: 詢價單 RFQ-2026-0518',
       body:`<div class="quote-line"><span>單價</span><b>NT$370</b></div><div class="quote-line"><span>交期</span><b>7 天</b></div><div class="quote-line"><span>良率</span><b>97%</b></div>`});
     await sleep(900);
   }
@@ -1112,8 +1112,8 @@ async function runDemo(){
     <table>
       <tr><td style="font-weight:700">廠商</td><td style="text-align:center">價格</td><td style="text-align:center">交期</td><td style="text-align:center">良率</td></tr>
       <tr><td>全鋼表處</td><td style="text-align:center;color:#0a0">$320</td><td style="text-align:center">9天</td><td style="text-align:center">95%</td></tr>
-      <tr><td>永鎵精密</td><td style="text-align:center;color:#c00">$420</td><td style="text-align:center;color:#0a0">4天</td><td style="text-align:center;color:#0a0">99%</td></tr>
-      <tr><td>新鎏鍍</td><td style="text-align:center">$370</td><td style="text-align:center">7天</td><td style="text-align:center">97%</td></tr>
+      <tr><td>大同精密</td><td style="text-align:center;color:#c00">$420</td><td style="text-align:center;color:#0a0">4天</td><td style="text-align:center;color:#0a0">99%</td></tr>
+      <tr><td>順興</td><td style="text-align:center">$370</td><td style="text-align:center">7天</td><td style="text-align:center">97%</td></tr>
     </table>`);
   stepState('s5','done');
 
@@ -1121,18 +1121,18 @@ async function runDemo(){
   stepState('s6','active');
   await sleep(700);
   typing(); await sleep(900); stopTyping();
-  botText('報價助手 Agent','綜合生管和代工兩端算給您：客戶要 <b>10 天</b>。<br>👉 生管說我端包膠＋採購要 6 天；表面處理代工若用<b>永鎵（4天/有認證）</b>，總共剛好 <b>10 天趕得上</b>，但代工貴 $100/支。<br>👉 用全鋼（9天）會總共 15 天，<b>來不及</b>。');
+  botText('報價助手 Agent','綜合生管和代工兩端算給您：客戶要 <b>10 天</b>。<br>👉 生管說我端包膠＋採購要 6 天；表面處理代工若用<b>大同（4天/有認證）</b>，總共剛好 <b>10 天趕得上</b>，但代工貴 $100/支。<br>👉 用全鋼（9天）會總共 15 天，<b>來不及</b>。');
   const g2 = await gate({
     block:false,
     title:'交期 vs 成本，要怎麼取捨？',
-    desc:'生管評估：要壓進客戶的 10 天，<b>表面處理只能用最快的永鎵（貴 $100/支，共 +$20,000）</b>。<br><br>• 吃下成本、用永鎵準時交？<br>• 還是用便宜的全鋼、回頭跟客戶談延到 15 天？<br><br>這是<b>生意判斷</b>，我不替您決定。',
-    okLabel:'用永鎵準時交', noLabel:'我去跟客戶談延期'
+    desc:'生管評估：要壓進客戶的 10 天，<b>表面處理只能用最快的大同（貴 $100/支，共 +$20,000）</b>。<br><br>• 吃下成本、用大同準時交？<br>• 還是用便宜的全鋼、回頭跟客戶談延到 15 天？<br><br>這是<b>生意判斷</b>，我不替您決定。',
+    okLabel:'用大同準時交', noLabel:'我去跟客戶談延期'
   });
   addLog('hold','生管產能＋代工交期權衡 → 回報老闆討論（AI 不自動選）','human/tradeoff');
   if(g2.approved){
-    meText('鴻碩是大客戶要顧，用永鎵準時交！👍');
-    addLog('allow','採用永鎵（趕交期+認證），成本基準確認','tool/cost');
-    botText('報價助手 Agent','好～用永鎵。最終單支成本 <b>NT$1,890</b>（鐵輪650＋膠料540＋包膠工時280＋表處420）');
+    meText('鴻碩是大客戶要顧，用大同準時交！👍');
+    addLog('allow','採用大同（趕交期+認證），成本基準確認','tool/cost');
+    botText('報價助手 Agent','好～用大同。最終單支成本 <b>NT$1,890</b>（鐵輪650＋膠料540＋包膠工時280＋表處420）');
   }else{
     meText('我打給鴻碩喬看看能不能延期 📞');
     addLog('allow','議價/交期協商交由老闆（AI 不自動決定）','human/deal');
@@ -1223,7 +1223,7 @@ async function runDemo(){
     await sleep(350); sysRow('客戶','鴻碩電子');
     await sleep(350); sysRow('產品','包膠鐵輪 ×200');
     await sleep(350); sysRow('成本/報價',`NT$1,890 / NT$${g4.value||'2,500'}`);
-    await sleep(350); sysRow('採用代工','永鎵精密（表面處理）');
+    await sleep(350); sysRow('採用代工','大同精密（表面處理）');
     await sleep(350); sysRow('狀態','已簽核・已加密寄出');
     addLog('allow','報價單寫入系統（persistent，可追溯+當未來歷史）','db/archive');
     await sleep(500); sysSaved();

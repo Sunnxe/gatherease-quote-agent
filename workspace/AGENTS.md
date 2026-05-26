@@ -141,15 +141,15 @@ cat /tmp/rfq-sup001.json | bash /sandbox/.openclaw/workspace/skills/send_email/c
    - 全到了 → 繼續 step 3
 3. compare_suppliers {supplier_ids, customer_requirements: {max_lead_time, requires_anti_static}}
 4. order_store update {patch: {comparison, status: "awaiting_tradeoff"}}
-5. line_notify {gate: "gate-2-tradeoff-decision", summary: trade-off table, options: ["選永鎵","選新鎏鍍 + 延 3 天","取消"]}
+5. line_notify {gate: "gate-2-tradeoff-decision", summary: trade-off table, options: ["選大同","選順興 + 延 3 天","取消"]}
 6. order_store append_audit {gate:"gate-2-tradeoff-decision"}
 ```
 
 ---
 
-### 🟢 情境 D：老闆 LINE 簽選了「永鎵」
+### 🟢 情境 D：老闆 LINE 簽選了「大同」
 
-**訊號**：「老闆已決定 hold_id=xxx choice=0 action=選永鎵」
+**訊號**：「老闆已決定 hold_id=xxx choice=0 action=選大同」
 
 **動作**：
 
@@ -245,7 +245,7 @@ webhook 注入的 user message 格式長這樣：
    |---|---|---|
    | gate-1-secret-probe | 0=「仍正常報價」 / 1=「暫停」 / 2=「回信婉拒」 | 走情境 F 對應動作 |
    | gate-pre-rfq | 0=「發詢價」 / 1=「修改名單」 / 2=「取消」 | 走**情境 B** (send_email 3 RFQ) |
-   | gate-2-tradeoff-decision | 0=「選永鎵」 / 1=「選新鎏鍍 + 延 3 天」 / 2=「取消」 | 走**情境 D** (update supplier_choice) |
+   | gate-2-tradeoff-decision | 0=「選大同」 / 1=「選順興 + 延 3 天」 / 2=「取消」 | 走**情境 D** (update supplier_choice) |
    | gate-3-final-quote-signoff | 0=「簽核並寄出」 / 1=「修改價格」 / 2=「取消」 | 走**情境 E** (generate_quote_pdf + send_email 客戶) |
 
 3. **更新 order_store audit + status**：

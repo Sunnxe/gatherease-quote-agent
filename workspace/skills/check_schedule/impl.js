@@ -47,7 +47,7 @@ async function checkSchedule({ product_id, qty, customer_desired_lead_days, surf
   const purchaseSteel = sched.process_lead_times.steel_wheel_purchase_days;       // 3
   const surface = surface_treatment_lead_days !== undefined
     ? Number(surface_treatment_lead_days)
-    : 4;   // 預設最快代工 (永鎵 4 天)
+    : 4;   // 預設最快代工 (大同 4 天)
   const inHousePU = sched.process_lead_times.in_house_pu_coating_days;            // 6
   const qcPack = sched.process_lead_times.qc_and_pack_days;                       // 1
 

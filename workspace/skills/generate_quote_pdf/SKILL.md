@@ -34,7 +34,7 @@ exec bash skills/generate_quote_pdf/cli.sh
   "unit_price_twd": 1612,
   "total_twd": 322400,
   "lead_days": 14,
-  "supplier_choice": "永鎵精密表面",
+  "supplier_choice": "大同精密表面",
   "terms": "30% T/T deposit upon order confirmation, 70% before shipment. Anti-Static spec verified per ESD-S20.20. Lead time counts from deposit receipt.",
   "signed_by": "老闆（GatherEase AI agent LINE 簽核）"
 }

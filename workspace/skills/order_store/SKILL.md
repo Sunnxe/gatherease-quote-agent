@@ -100,7 +100,7 @@ exec bash skills/order_store/cli.sh
   "entry": {
     "level": "ALLOW",
     "gate": "gate-2-tradeoff-decision",
-    "msg": "老闆選永鎵",
+    "msg": "老闆選大同",
     "skill": "line_notify"
   }
 }

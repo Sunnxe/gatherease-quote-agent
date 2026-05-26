@@ -15,7 +15,7 @@ metadata:
 
 **Step 9**——廖老闆批准發詢價、3 家代工廠回信後，我 call 我這個 skill 整理「價 / 期 / 質」三個維度，輸出給 GATE ③ 多維權衡 push LINE 給廖老闆決定。
 
-Demo 內：3 家代工廠（全鋼表處 / 永鎵精密表面 / 新鎏鍍工業）的回信是 mock 在 `data/suppliers.json`，我直接讀檔不真寄 RFQ。
+Demo 內：3 家代工廠（全鋼表處 / 大同精密表面 / 順興電鍍工業）的回信是 mock 在 `data/suppliers.json`，我直接讀檔不真寄 RFQ。
 
 ## 怎麼呼叫
 

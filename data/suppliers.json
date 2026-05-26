@@ -27,7 +27,7 @@
     },
     {
       "id": "SUP-002",
-      "name": "永鎵精密表面",
+      "name": "大同精密表面",
       "category": "surface-treatment-vendor",
       "contact": {
         "name": "黃經理",
@@ -51,7 +51,7 @@
     },
     {
       "id": "SUP-003",
-      "name": "新鎏鍍工業",
+      "name": "順興電鍍工業",
       "category": "surface-treatment-vendor",
       "contact": {
         "name": "李課長",
@@ -79,7 +79,7 @@
       "category": "steel-wheel-supplier",
       "contact": {
         "name": "張先生",
-        "email": "supplier-jingang@test-gatherease.example",
+        "email": "sunny.liao@gatherease.ai",
         "phone": "+886-4-2418-XXXX"
       },
       "pricing": {

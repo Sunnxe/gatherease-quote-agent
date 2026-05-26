@@ -258,7 +258,7 @@ gatherease-quote-agent/
 │  └─ get_history_quote/          # quote agent · 加權相似度找歷史訂單參考
 ├─ data/                          # 合成資料（synthetic data）
 │  ├─ products.json               # 包膠鐵輪 BOM
-│  ├─ suppliers.json              # 全鋼 / 永鎵 / 新鎏鍍
+│  ├─ suppliers.json              # 全鋼 / 大同 / 順興
 │  ├─ customers.json              # 鴻碩電子等
 │  ├─ cost_rates.json             # 成本費率（overhead / markup）
 │  ├─ schedule.json               # 產線排程
