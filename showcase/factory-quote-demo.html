@@ -370,6 +370,36 @@
   .ocs .chip.policy.ver{background:rgba(255,176,32,0.18);color:#ffd273;font-family:'JetBrains Mono',monospace;font-weight:800}
   .ocs .skills{display:flex;flex-wrap:wrap;gap:5px;flex:1}
   .ocs .meta{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace}
+
+  /* ---------- Sandbox Activity (真實 OCSF + gateway log) ---------- */
+  .sa-panel{
+    background:linear-gradient(135deg, rgba(118,185,0,0.06) 0%, rgba(118,185,0,0.01) 100%);
+    border:1px solid rgba(118,185,0,0.28);
+    border-radius:14px;
+    overflow:hidden;
+  }
+  .sa-panel .ph{
+    padding:10px 14px;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
+    border-bottom:1px solid rgba(118,185,0,0.18);
+    display:flex;align-items:center;justify-content:space-between;
+    color:var(--nv-green-bright);
+  }
+  .sa-list{padding:8px 10px;height:230px;overflow-y:auto;font-family:'JetBrains Mono',monospace}
+  .sa-list::-webkit-scrollbar{width:5px}
+  .sa-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+  .sa-row{display:flex;gap:8px;padding:5px 4px;border-radius:5px;font-size:10.5px;line-height:1.4;
+    animation:slidein .25s ease;margin-bottom:1px}
+  .sa-row .sa-emoji{flex-shrink:0;font-size:13px;line-height:1.3}
+  .sa-row .sa-text{flex:1}
+  .sa-row .sa-text b{color:var(--ink);font-weight:600;font-size:10.5px}
+  .sa-row .sa-detail{color:var(--muted);font-size:9.5px}
+  .sa-inference{background:rgba(255,176,32,0.06);border-left:2px solid var(--hold)}
+  .sa-policy{background:rgba(118,185,0,0.05);border-left:2px solid var(--nv-green)}
+  .sa-egress{background:rgba(90,150,255,0.05);border-left:2px solid #7fb0ff}
+  .sa-block{background:rgba(255,59,59,0.08);border-left:2px solid var(--block)}
+  .sa-exec, .sa-tool{background:rgba(118,185,0,0.03);border-left:2px solid rgba(118,185,0,0.4)}
+  .sa-empty{color:var(--muted);font-size:11px;text-align:center;padding:30px 10px;font-style:italic;
+    font-family:'Noto Sans TC',sans-serif}
 </style>
 </head>
 <body>
@@ -487,6 +517,17 @@
             </span>
             <span class="meta">· seccomp + Landlock + netns 強制中</span>
           </div>
+        </div>
+      </div>
+
+      <!-- Sandbox Activity · 真實 OpenClaw + NemoClaw log tail (agent 思考 / 治理事件) -->
+      <div class="sa-panel">
+        <div class="ph">
+          <span>🦞 Sandbox Activity · agent thinking + kernel governance</span>
+          <span class="live"><span class="pulse"></span>live tail</span>
+        </div>
+        <div class="sa-list" id="sandboxActivity">
+          <div class="sa-empty">等 sandbox 活動... (mirror server 每 10 秒抓 nemoclaw logs)</div>
         </div>
       </div>
 
@@ -1199,6 +1240,32 @@ async function refreshOpenClawStatus(){
 refreshOpenClawStatus();
 // 30s polling 留著但較長 (對 demo 影片錄影夠用，不會壓死 sandbox)
 setInterval(refreshOpenClawStatus, 30000);
+
+// ─── Sandbox Activity panel (真實 sandbox 治理 + agent log) ───
+async function refreshSandboxActivity(){
+  try {
+    const r = await fetch('/api/sandbox-activity');
+    if (!r.ok) return;
+    const data = await r.json();
+    const el = document.getElementById('sandboxActivity');
+    if (!el) return;
+    if (!data.events || data.events.length === 0) {
+      el.innerHTML = '<div class="sa-empty">等 sandbox 活動... (跑 agent 就會看到事件)</div>';
+      return;
+    }
+    el.innerHTML = data.events.map(e => `
+      <div class="sa-row sa-${e.type}">
+        <span class="sa-emoji">${e.emoji}</span>
+        <span class="sa-text"><b>${e.label}</b><br><span class="sa-detail">${e.detail}</span></span>
+      </div>
+    `).join('');
+    el.scrollTop = el.scrollHeight;
+  } catch (e) {
+    // silent fallback (file:// 開時 fetch 會 fail)
+  }
+}
+refreshSandboxActivity();
+setInterval(refreshSandboxActivity, 8000);  // 8s polling, 比 status 頻繁因為 cache 10s
 </script>
 </body>
 </html>

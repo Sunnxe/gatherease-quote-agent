@@ -159,6 +159,95 @@ app.get('/api/policies', async (req, res) => {
   }
 });
 
+// ─── /api/sandbox-activity (sandbox 內治理 + agent log) ──
+app.get('/api/sandbox-activity', async (req, res) => {
+  try {
+    const raw = await cached(
+      'activity',
+      () => execAsync(`nemoclaw ${SANDBOX} logs --tail 200 2>&1`, 12000),
+      10000   // 10s cache for "live feel"
+    );
+
+    // Parse 重要 events from OCSF + gateway log
+    const events = [];
+    for (const line of raw.split('\n')) {
+      if (!line.trim()) continue;
+      const tsMatch = line.match(/\[(\d{10})\.\d+\]/) || line.match(/(\d{4}-\d{2}-\d{2}T[\d:.]+)/);
+      const ts = tsMatch ? tsMatch[1] : '';
+
+      // 1. Inference call (agent → Nemotron)
+      if (line.includes('routing proxy inference') || line.includes('integrate.api.nvidia.com')) {
+        events.push({
+          type: 'inference',
+          emoji: '🧠',
+          label: 'agent → Nemotron Super',
+          detail: 'NIM API · /v1/chat/completions',
+          ts, raw: line
+        });
+      }
+      // 2. Landlock filesystem governance
+      else if (line.includes('Landlock')) {
+        const rules = line.match(/rules_applied:(\d+)/);
+        events.push({
+          type: 'policy',
+          emoji: '🛡️',
+          label: 'Landlock 強制中',
+          detail: rules ? `rules: ${rules[1]} applied` : 'kernel-level fs sandbox',
+          ts, raw: line
+        });
+      }
+      // 3. Network egress
+      else if (line.includes('NET:OPEN') && line.includes('ALLOWED')) {
+        const hostMatch = line.match(/ALLOWED\s+([^\s]+:\d+)/);
+        events.push({
+          type: 'egress',
+          emoji: '🌐',
+          label: 'NemoClaw egress ALLOWED',
+          detail: hostMatch ? hostMatch[1] : 'connection authorized',
+          ts, raw: line
+        });
+      }
+      else if (line.includes('NET:OPEN') && line.includes('DENIED')) {
+        events.push({
+          type: 'block',
+          emoji: '🚫',
+          label: 'NemoClaw egress BLOCKED',
+          detail: 'unauthorized host attempted',
+          ts, raw: line
+        });
+      }
+      // 4. SSH relay (agent exec'ing skill)
+      else if (line.includes('SSH:OPEN ALLOWED')) {
+        events.push({
+          type: 'exec',
+          emoji: '⚙️',
+          label: 'agent exec → skill',
+          detail: 'SSH relay opened to sandbox',
+          ts, raw: line
+        });
+      }
+      // 5. Gateway grpc exec
+      else if (line.includes('ExecSandbox')) {
+        events.push({
+          type: 'tool',
+          emoji: '🔧',
+          label: 'tool call started',
+          detail: 'OpenClaw runtime → cli.sh',
+          ts, raw: line
+        });
+      }
+    }
+
+    res.json({
+      events: events.slice(-40),
+      count: events.length,
+      raw_at: new Date().toISOString()
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message, stderr: e.stderr });
+  }
+});
+
 // ─── /api/audit?n=50 ────────────────────────────────────
 app.get('/api/audit', async (req, res) => {
   const n = Math.min(parseInt(req.query.n || '50', 10), 500);
