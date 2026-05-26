@@ -1194,8 +1194,11 @@ async function refreshOpenClawStatus(){
     // silent fallback — file:// 開的時候會走這
   }
 }
+// 第一次 fetch (page load) 後就停 — 30 秒 polling 對 sandbox SSH relay 太重，
+// demo 影片只要錄到「第一次 fetch 真實數字」就夠
 refreshOpenClawStatus();
-setInterval(refreshOpenClawStatus, 5000);
+// 30s polling 留著但較長 (對 demo 影片錄影夠用，不會壓死 sandbox)
+setInterval(refreshOpenClawStatus, 30000);
 </script>
 </body>
 </html>

@@ -45,6 +45,26 @@ function execAsync(cmd, timeout = 10000) {
   });
 }
 
+// ─── 簡單 in-memory cache (避免 polling 壓死 sandbox SSH relay) ──
+const _cache = new Map();
+async function cached(key, fn, ttlMs = 30000) {
+  const now = Date.now();
+  const hit = _cache.get(key);
+  if (hit && now - hit.at < ttlMs) return hit.data;
+  try {
+    const data = await fn();
+    _cache.set(key, { data, at: now });
+    return data;
+  } catch (e) {
+    // 失敗時用 stale cache 比 spam error 好
+    if (hit) {
+      console.warn(`[cache:${key}] fresh fetch failed, using stale: ${e.message}`);
+      return hit.data;
+    }
+    throw e;
+  }
+}
+
 // ─── CORS (Sunny Mac 可能跨域) ──────────────────────────
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -56,10 +76,10 @@ app.use((req, res, next) => {
 app.use(express.static(SHOWCASE));
 app.get('/', (req, res) => res.redirect('/factory-quote-demo.html'));
 
-// ─── /api/status ────────────────────────────────────────
+// ─── /api/status (30s cached) ───────────────────────────
 app.get('/api/status', async (req, res) => {
   try {
-    const out = await execAsync('nemoclaw status --json');
+    const out = await cached('status', () => execAsync('nemoclaw status --json'), 30000);
     const data = JSON.parse(out);
     const sandbox = (data.sandboxes || []).find(s => s.name === SANDBOX) || {};
     res.json({
@@ -80,7 +100,7 @@ app.get('/api/status', async (req, res) => {
   }
 });
 
-// ─── /api/skills (parse openclaw skills list table) ─────
+// ─── /api/skills (60s cached — exec 比 status 重) ───────
 app.get('/api/skills', async (req, res) => {
   // 我們關心的 10 個 GatherEase skill
   const OURS = new Set([
@@ -89,9 +109,10 @@ app.get('/api/skills', async (req, res) => {
     'compare_suppliers', 'line_notify', 'send_email', 'generate_quote_pdf'
   ]);
   try {
-    const out = await execAsync(
-      `nemoclaw ${SANDBOX} exec -- openclaw skills list 2>&1`,
-      20000
+    const out = await cached(
+      'skills',
+      () => execAsync(`nemoclaw ${SANDBOX} exec -- openclaw skills list 2>&1`, 30000),
+      60000
     );
     // line patterns like: │ ✓ ready  │ read_drawing       │ ...
     const readySkills = [];
