@@ -59,16 +59,18 @@ for skill in "${SKILLS[@]}"; do
       # 確保目標子目錄存在
       parent=$(dirname "$rel")
       if [ "$parent" != "." ]; then
-        nemoclaw "$SANDBOX" exec -- mkdir -p "$remote_dir/$parent"
+        nemoclaw "$SANDBOX" exec -- mkdir -p "$remote_dir/$parent" < /dev/null
       fi
       B64=$(base64 -w0 "$f" 2>/dev/null || base64 "$f" | tr -d '\n')
       echo "  → $rel ($size bytes)"
-      nemoclaw "$SANDBOX" exec -- bash -c "echo '$B64' | base64 -d > '$remote_dir/$rel'"
+      # ⚠️ < /dev/null 必加：while read 用 process substitution 餵 file list 進 stdin，
+      #   nemoclaw exec 預設會讀 parent stdin → 吃掉剩下的 filenames → 只 deploy 一個檔就 EOF。
+      nemoclaw "$SANDBOX" exec -- bash -c "echo '$B64' | base64 -d > '$remote_dir/$rel'" < /dev/null
     fi
   done < <(find "$local_dir" -type f)
 
   # cli.sh 要 executable
-  nemoclaw "$SANDBOX" exec -- chmod +x "$remote_dir/cli.sh"
+  nemoclaw "$SANDBOX" exec -- chmod +x "$remote_dir/cli.sh" < /dev/null
 done
 
 echo ""
@@ -100,11 +102,12 @@ if [ -d "data" ]; then
       fi
       parent=$(dirname "$rel")
       if [ "$parent" != "." ]; then
-        nemoclaw "$SANDBOX" exec -- mkdir -p "$SANDBOX_WS/data/$parent"
+        nemoclaw "$SANDBOX" exec -- mkdir -p "$SANDBOX_WS/data/$parent" < /dev/null
       fi
       B64=$(base64 -w0 "$f" 2>/dev/null || base64 "$f" | tr -d '\n')
       echo "  → data/$rel ($size bytes)"
-      nemoclaw "$SANDBOX" exec -- bash -c "echo '$B64' | base64 -d > '$SANDBOX_WS/data/$rel'"
+      # ⚠️ < /dev/null 必加，同 skill 迴圈的理由
+      nemoclaw "$SANDBOX" exec -- bash -c "echo '$B64' | base64 -d > '$SANDBOX_WS/data/$rel'" < /dev/null
     fi
   done < <(find data -type f 2>/dev/null)
 fi
