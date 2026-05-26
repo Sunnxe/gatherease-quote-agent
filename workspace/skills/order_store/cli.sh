@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 #
-# read_drawing skill CLI entry
-# stdin: JSON {drawing_pdf_path, customer_id, ...}
-# stdout: JSON {product_id, specs, bom, confidence, ...}
+# order_store skill CLI entry
+# stdin: JSON {action, ...args}
+# stdout: JSON (order or summary array)
 #
 
 set -euo pipefail
 SKILL_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Load workspace .env (sandbox 內 deploy-skills.sh 會寫進 /sandbox/.openclaw/workspace/.env)
 WORKSPACE_DIR="$(cd "$SKILL_DIR/../.." && pwd)"
 [ -f "$WORKSPACE_DIR/.env" ] && { set -a; source "$WORKSPACE_DIR/.env"; set +a; }
 

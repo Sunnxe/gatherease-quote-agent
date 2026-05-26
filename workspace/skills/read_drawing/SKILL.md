@@ -1,22 +1,22 @@
 ---
 name: read_drawing
-description: 讀工程圖 PDF + 客戶背景 → 推斷產品規格 / BOM 7 行 (Vendor/InHouse/Outsource) / 信心分數。GatherRoller 工程判讀 agent。
+description: 真讀工程圖 PDF — PDF→PNG→Nemotron Vision API (meta/llama-3.2-90b-vision-instruct) 真視覺判讀，抓出尺寸 / 硬度 / 包膠材質 / 公差 / part number。Demo 影片金鏡頭。
 metadata:
   openclaw:
     emoji: 📐
     os: [linux]
     requires:
-      bins: [node, bash]
+      bins: [node, bash, pdftoppm]
       env: [NVIDIA_API_KEY]
 ---
 
-# read_drawing — 工程判讀 skill
+# read_drawing — 工程圖視覺判讀 skill
 
 ## 我什麼時候會用這個 skill
 
-**任何時候 user 給我「客戶詢價」**——包含產品描述、規格、硬度、數量、交期——我就要 call 這個 skill 把客戶要的東西轉成具體 BOM。
+inbox_watch 收到客戶 email 抓出 PDF 附件、或 user 在 chat 給我工程圖路徑 → 我 call read_drawing 真讀 PDF 抓規格。
 
-這是 13 步驟流程的 **step 3**，所有後續 step（找歷史、估成本、發詢價）都依賴它的輸出。
+這是 demo 影片**最關鍵的鏡頭**——觀眾要看到「AI 真讀工程圖」，不是文字推理。
 
 ## 怎麼呼叫
 
@@ -24,37 +24,47 @@ metadata:
 exec bash skills/read_drawing/cli.sh
 ```
 
-**stdin** 傳 JSON：
+**stdin**：
 
 ```json
 {
-  "drawing_pdf_path": "/sandbox/.openclaw/workspace/data/dummy-drawing-鴻碩-anti-static.pdf",
-  "customer_id": "CUST-001",
-  "product_request": "Anti-Static Silicone Roller (PCB 用)",
-  "spec": "25*35*600",
-  "hardness": 55
+  "order_id": "QUO-2026-0001",
+  "drawing_pdf_path": "data/orders/QUO-2026-0001/incoming-drawing.pdf",
+  "customer_name": "昕叡電子有限公司 Shin Tech."
 }
 ```
 
-**stdout** 拿 JSON：
+**stdout**（vision 真讀後）：
 
 ```json
 {
-  "product_id": "Anti-Static Silicone Roller (PU-coated wheel variant / 包膠鐵輪)",
-  "product_name_zh": "包膠鐵輪 (抗靜電 PU 表面)",
-  "product_name_en": "Anti-Static Silicone Roller",
+  "order_id": "QUO-2026-0001",
+  "vision_used": true,
+  "model": "meta/llama-3.2-90b-vision-instruct",
+  "product_id": "矽膠抗靜電包膠輪 A1",
+  "product_name_zh": "矽膠抗靜電包膠輪",
+  "product_name_en": "Anti-Static Silicone Rubber Roller",
+  "drawing_version": "A1",
   "industry_match": "PCB / Optoelectronic Panels",
   "specs": {
-    "diameter_mm": 25, "width_mm": 35, "length_mm": 600,
-    "shaft_diameter_mm": 12, "coating_material": "Anti-Static Silicone (Shore A 55)",
-    "hardness_shore_a": 55,
-    "surface_treatment": "Grinding + 抗靜電 ESD 表面處理",
-    "load_kg": 250
+    "outer_diameter_mm": 50.0,
+    "outer_diameter_tolerance": "+0.250 / -0.000",
+    "coating_length_mm": 598,
+    "shaft_total_length_mm": 732,
+    "between_shaft_length_mm": 665,
+    "coating_material": "矽膠",
+    "hardness_shore_a": 40,
+    "hardness_tolerance": "±5",
+    "surface_finish_note": "去銳角、毛邊",
+    "shaft_features": [
+      {"label": "UC", "tolerance": "+0.080 / -0.000", "part_no": "PJD8963*MH820"},
+      {"label": "RB", "tolerance": "+0.050 / -0.030", "part_no": "PJD0027*MH083"}
+    ]
   },
   "bom": [
     {"part_name": "Roller Core (Shaft)", "source": "Vendor", "qty_per_unit": 1, "material_spec": "S45C Carbon Steel"},
-    {"part_name": "Anti-Static Silicone Cover", "source": "InHouse", "qty_per_unit": 0.8, "material_spec": "抗靜電矽膠 Shore A 55"},
-    {"part_name": "Adhesive (Bonding Agent)", "source": "InHouse", "qty_per_unit": 60},
+    {"part_name": "Anti-Static Silicone Cover", "source": "InHouse", "qty_per_unit": 0.6, "material_spec": "矽膠 Shore A 40 ± 5"},
+    {"part_name": "Adhesive (Bonding Agent)", "source": "InHouse", "qty_per_unit": 50},
     {"part_name": "End Caps", "source": "InHouse", "qty_per_unit": 2},
     {"part_name": "Bearings", "source": "InHouse", "qty_per_unit": 2},
     {"part_name": "Surface Finish (Grinding)", "source": "Outsource", "qty_per_unit": 1},
@@ -62,29 +72,36 @@ exec bash skills/read_drawing/cli.sh
   ],
   "quality_requirements": {
     "tolerance_mm": 0.05,
-    "certifications_required": ["ESD-S20.20 抗靜電認證", "RoHS"],
+    "certifications_required": [],
     "anti_static_required": true
   },
-  "confidence": 0.94,
-  "notes": "..."
+  "confidence": 0.92,
+  "notes": "...判讀理由"
 }
 ```
 
-## 重要說明：不是視覺真讀 PDF
+## 兩段流程
 
-**Real 模式**：skill 真的 call NVIDIA Nemotron Super 120B，但**輸入是文字**（customer_id + drawing_pdf_path 字串 + 14KB GatherRoller knowledge.txt），**不是 vision 真讀 PDF**。Nemotron 根據 knowledge.txt 內 11 個產業章節（PCB / 光電 / 印刷等）對應客戶背景，文字推理出 BOM 跟規格。
+```
+[1] PDF → PNG (用 pdftoppm 第一頁 150 dpi)
+       ↓
+[2] PNG base64 → Nemotron Vision (llama-3.2-90b-vision-instruct via NIM)
+       prompt: 嚴格 JSON output schema
+       ↓
+[3] parse + 合理性檢查 → stdout
+```
 
-Demo 用合成 customer / product 配對（鴻碩電子 → PCB → Anti-Static Silicone Roller），輸出穩定可重現。
+## 規矩
 
-**Demo 模式**（無 NVIDIA_API_KEY 時）：直接回 hardcode JSON。
+- **vision API endpoint = `integrate.api.nvidia.com/v1/chat/completions`**，NemoClaw 已套 NVIDIA NIM egress preset
+- **model = `meta/llama-3.2-90b-vision-instruct`**（Nemotron Super text-only，要用這個 vision 才能讀圖）
+- PDF rasterize 用 `pdftoppm` (poppler-utils 內建 in 多數 Ubuntu sandbox)
+- 失敗 fallback：vision API 不可達 → 用文字推理 mock + `confidence: 0.5`
+- **不要 hallucinate part number** — 圖內看不清楚就回 `null` 不亂編
+- 公差 (tolerance) 直接複製圖上文字，不要簡化
 
 ## 失敗處理
 
-- exit code != 0 → 我 catch，跟 user 說「讀圖失敗，請確認 drawing_pdf_path 或重試」
-- 輸出不是 valid JSON → 同上
-- Nemotron API 回 4xx/5xx → impl.js 內 fallback 到 mock，stderr log 警告
-
-## 我絕對不會做
-
-- 把 knowledge.txt 內容 dump 到 chat（14KB 太大、不必要）
-- 自己編規格（譬如客戶沒指定材料，我**不要** hallucinate「Shore A 70」之類數字，要回 confidence 低 + 主動列「需要釐清的點」給廖老闆）
+- `pdftoppm not found` → 提示 sandbox 內裝 poppler-utils
+- vision API 4xx/5xx → fallback text-only mock，stderr log 警告
+- PDF 不存在 → exit 1 + 報錯

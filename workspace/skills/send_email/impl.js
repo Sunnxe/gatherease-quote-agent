@@ -35,27 +35,92 @@ function encodeSubject(s) {
   return `=?UTF-8?B?${Buffer.from(s, 'utf8').toString('base64')}?=`;
 }
 
-// ─── Build MIME message body ───
-function buildMimeBody({ from, to, subject, body }) {
+// ─── Build MIME message body (multipart if attachments) ───
+const fs = require('fs');
+
+function buildMimeBody({ from, to, subject, body, attachments }) {
   const recipients = Array.isArray(to) ? to.join(', ') : to;
   const messageId = `<${Date.now()}.${Math.random().toString(36).slice(2)}@gatherease.local>`;
   const dateHdr = new Date().toUTCString();
-  const bodyB64 = Buffer.from(body, 'utf8').toString('base64');
+  const bodyB64 = Buffer.from(body, 'utf8').toString('base64').match(/.{1,76}/g).join('\r\n');
 
-  const lines = [
+  const hasAttach = Array.isArray(attachments) && attachments.length > 0;
+
+  // ── Headers ──
+  const headers = [
     `Date: ${dateHdr}`,
     `From: ${from}`,
     `To: ${recipients}`,
     `Subject: ${encodeSubject(subject)}`,
     `Message-ID: ${messageId}`,
-    `MIME-Version: 1.0`,
+    `MIME-Version: 1.0`
+  ];
+
+  if (!hasAttach) {
+    // ── Simple single-part text body ──
+    headers.push(`Content-Type: text/plain; charset=UTF-8`);
+    headers.push(`Content-Transfer-Encoding: base64`);
+    headers.push(``);
+    return { mime: headers.concat([bodyB64]).join('\r\n'), messageId };
+  }
+
+  // ── Multipart/mixed (body + attachments) ──
+  const boundary = `BOUND_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  headers.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
+  headers.push(``);
+  headers.push(`This is a multi-part message in MIME format.`);
+
+  const parts = [];
+  // Text part
+  parts.push([
+    `--${boundary}`,
     `Content-Type: text/plain; charset=UTF-8`,
     `Content-Transfer-Encoding: base64`,
     ``,
-    bodyB64.match(/.{1,76}/g).join('\r\n')   // base64 wrap 76 col
-  ];
+    bodyB64
+  ].join('\r\n'));
 
-  return { mime: lines.join('\r\n'), messageId };
+  // Attachment parts
+  for (const att of attachments) {
+    const filePath = att.path;
+    const filename = att.filename || (filePath ? require('path').basename(filePath) : 'attachment.bin');
+    const contentType = att.content_type || guessContentType(filename);
+    let data;
+    try {
+      data = fs.readFileSync(filePath);
+    } catch (e) {
+      throw new Error(`attachment file not readable: ${filePath} (${e.message})`);
+    }
+    const dataB64 = data.toString('base64').match(/.{1,76}/g).join('\r\n');
+
+    parts.push([
+      `--${boundary}`,
+      `Content-Type: ${contentType}; name="${filename}"`,
+      `Content-Transfer-Encoding: base64`,
+      `Content-Disposition: attachment; filename="${filename}"`,
+      ``,
+      dataB64
+    ].join('\r\n'));
+  }
+
+  // Closing boundary
+  parts.push(`--${boundary}--`);
+
+  return { mime: headers.concat(parts).join('\r\n'), messageId };
+}
+
+function guessContentType(filename) {
+  const ext = filename.toLowerCase().split('.').pop();
+  const map = {
+    pdf: 'application/pdf',
+    png: 'image/png',
+    jpg: 'image/jpeg', jpeg: 'image/jpeg',
+    txt: 'text/plain',
+    csv: 'text/csv',
+    json: 'application/json',
+    html: 'text/html'
+  };
+  return map[ext] || 'application/octet-stream';
 }
 
 // ─── Tiny SMTP client (zero deps, Node net + tls) ───
@@ -199,7 +264,7 @@ function smtpSend({ host, port, username, password, from, to, mime, log }) {
 // ─── main ───
 async function main() {
   const input = await readStdin();
-  const { to, subject, body } = input;
+  const { to, subject, body, attachments } = input;
 
   if (!to) throw new Error('to required');
   if (!subject) throw new Error('subject required');
@@ -219,7 +284,7 @@ async function main() {
   const encodedDisplayName = `=?UTF-8?B?${Buffer.from(displayName, 'utf8').toString('base64')}?=`;
   const headerFrom = `${encodedDisplayName} <${username}>`;
 
-  const { mime, messageId } = buildMimeBody({ from: headerFrom, to, subject, body });
+  const { mime, messageId } = buildMimeBody({ from: headerFrom, to, subject, body, attachments });
 
   const log = [];
   await smtpSend({
@@ -237,6 +302,7 @@ async function main() {
     from_envelope: envelopeFrom,
     from_display: displayName,
     message_id: messageId,
+    attachments_count: Array.isArray(attachments) ? attachments.length : 0,
     sent_at: new Date().toISOString(),
     smtp_log_lines: log.length
   }));

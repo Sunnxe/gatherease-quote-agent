@@ -1,52 +1,60 @@
 # TOOLS
 
-我有的 OpenClaw 內建 tools + 桐聚 workspace skill。
+我有的 OpenClaw 內建 tools + 桐聚 workspace skill (10 個)。
 
-## OpenClaw 內建 tools（最常用）
+## OpenClaw 內建 tools
 
 | Tool | 用途 |
 |---|---|
-| `exec` | 跑 shell command。我大多數動作（call skill / 讀 data file / push LINE）都透過 `exec` 觸發對應的 `cli.sh` |
-| `file_read` | 讀 workspace 內檔案（data/*.csv / *.json） |
-| `file_write` | 寫檔案（譬如 audit log / pending hold state） |
+| `exec` | 跑 shell command。我大多數動作（call skill / 讀 data file）都透過 `exec` 觸發對應 `cli.sh` |
+| `file_read` | 讀 workspace 內檔案 |
+| `file_write` | 寫檔案 (audit log / 中間狀態) |
 
-## 桐聚 workspace skill（6 個）
+## 桐聚 workspace skills (10 個)
 
-每個 skill 都在 `{baseDir}/skills/<name>/`，內含 `SKILL.md` (我的指引) + `cli.sh` (執行入口) + `impl.js` (JS 邏輯) + 可能的 `data/`。
+每個 skill 在 `{baseDir}/skills/<name>/`，內含 `SKILL.md` + `cli.sh` + `impl.js` + 可能的 `data/` 或 `node_modules/`。
 
-| Skill | 用途 | 觸發指令 |
-|---|---|---|
-| `read_drawing` | 讀工程圖 PDF → 判讀產品規格 + BOM 7 行分工 | `exec bash skills/read_drawing/cli.sh <json-args>` |
-| `get_history_quote` | 對 10,000 筆合成歷史訂單做加權相似度比對 → top-5 | `exec bash skills/get_history_quote/cli.sh <json-args>` |
-| `calc_cost` | 依 BOM + 26 行 cost_data 表算單位成本 + 建議報價 | `exec bash skills/calc_cost/cli.sh <json-args>` |
-| `compare_suppliers` | 三家代工廠價/期/質多維比對 | `exec bash skills/compare_suppliers/cli.sh <json-args>` |
-| `line_notify` | push flex message 給老闆 LINE，**等 webhook 收到 postback** 才繼續 | `exec bash skills/line_notify/cli.sh <json-args>` |
-| `send_email` | Gmail SMTP 真寄信 (step 7 寄 RFQ × 3、step 13 寄報價單給客戶)。NemoClaw gmail-smtp.yaml 治理 egress 在這裡擋未授權 host | `exec bash skills/send_email/cli.sh <json-args>` |
+| Skill | 角色 | 觸發指令 | 何時用 |
+|---|---|---|---|
+| `order_store` | 📒 state CRUD | `exec bash skills/order_store/cli.sh` | 每筆新詢價 create；每個 skill output 後 update；GATE 後 append_audit |
+| `inbox_watch` | 📥 收信 | `exec bash skills/inbox_watch/cli.sh` | poll s778906@gmail.com 收新詢價 / 廠商回信，解析 PDF |
+| `read_drawing` | 📐 工程 | `exec bash skills/read_drawing/cli.sh` | inbox_watch 抓到 PDF 後，vision 真讀規格 / BOM |
+| `get_history_quote` | 🔍 報價助理 | `exec bash skills/get_history_quote/cli.sh` | 10k 歷史訂單加權 similarity 找 top-5 |
+| `check_schedule` | 📅 生管 | `exec bash skills/check_schedule/cli.sh` | 算自家產線最快交期 vs 客戶要的差 |
+| `calc_cost` | 💰 報價員 | `exec bash skills/calc_cost/cli.sh` | BOM × cost_data × overhead 12% + tier markup |
+| `compare_suppliers` | ⚖️ 比較 | `exec bash skills/compare_suppliers/cli.sh` | 3 家代工廠多維比對 (價/期/質) |
+| `line_notify` | 📱 LINE | `exec bash skills/line_notify/cli.sh` | 4 個 GATE 推老闆 LINE，**非阻塞**等回覆 |
+| `send_email` | 📧 寄信 | `exec bash skills/send_email/cli.sh` | Gmail SMTP 真寄 (支援 PDF 附件) |
+| `generate_quote_pdf` | 📄 出文件 | `exec bash skills/generate_quote_pdf/cli.sh` | 老闆簽核後產生報價單 PDF |
 
 ## 規矩
 
-- **每個 skill cli.sh 都接 stdin JSON、回 stdout JSON**。不要在 exec args 內塞 newline（會被 nemoclaw exec 拒）
-- **絕對不要直接 call NVIDIA NIM API、不要直接 call LINE API**——所有對外動作都包進 skill。理由：NemoClaw 治理層在 skill exec 邊界擋 egress，agent 直接 call 會繞過治理
-- **`line_notify` 是阻塞動作**：我推送後不要自己編「老闆已決定」訊息，要等真的 user message 進來（webhook 注入）才繼續。如果 5 分鐘沒回，skill 會 timeout，我跟老闆說「LINE 超時，要重發嗎」
+- **每個 skill cli.sh 都接 stdin JSON、回 stdout JSON**，沒有 newline 在 exec args
+- **絕對不要直接 call NVIDIA NIM / LINE / Gmail API** — 一律透過 skill。理由：NemoClaw 治理層在 skill exec 邊界擋 egress，agent 繞過 skill 直接 call 會破壞治理
+- **每個 skill call 都帶 `order_id`**（除了 `inbox_watch poll` 跟 `order_store create`）
+- **line_notify push 完不阻塞** — 我等下個 user message 進來才繼續（webhook 注入「老闆已決定 hold_id=xxx choice=N」）
+- **lazy install dep**：`inbox_watch` 首次跑會 install imapflow + mailparser + pdf-parse@1.1.1（~10s）；`generate_quote_pdf` 首次裝 pdfkit（~5s）。後續呼叫秒回。
 
-## 工作流程順序
+## 業務情境 → 觸發順序
 
-完整 13 步驟（含 4 個 GATE）見 AGENTS.md。簡略版：
+詳細看 `AGENTS.md`，這裡簡略：
 
 ```
-1.   收詢價
-2.   GATE ① 套機密偵測
-3.   read_drawing
-4.   get_history_quote
-5.   calc_cost (估底)
-6.   GATE ② 詢價單彙整 → push LINE 等老闆
-7.   send_rfq (mock)
-8.   收 3 家代工廠回信 (mock)
-9.   compare_suppliers
-10.  GATE ③ 多維權衡 → push LINE 等老闆
-11.  calc_cost (重算最終)
-12.  GATE ④ 最終簽核 → push LINE 等老闆
-13.  寄加密報價單 (mock)
+新詢價 (inbox_watch 或 user chat)
+  → order_store create
+  → read_drawing (vision PDF)
+  → get_history_quote
+  → check_schedule
+  → calc_cost (估底)
+  → line_notify GATE② → 等老闆批准發詢價
+  → send_email RFQ × 3 → 廠商
+  → inbox_watch poll 廠商回信 (loop)
+  → compare_suppliers
+  → line_notify GATE③ → 等老闆權衡
+  → calc_cost (重算最終)
+  → line_notify GATE④ → 等老闆簽
+  → generate_quote_pdf
+  → send_email 報價單 → 客戶
 ```
 
-每一步 input 都依賴前一步 output，順序是業務邏輯而非行政命令。
+額外 GATE①：客戶套機密偵測，read_drawing 後檢查 email body / PDF text 有沒有套機密語句 → push GATE① 警告。

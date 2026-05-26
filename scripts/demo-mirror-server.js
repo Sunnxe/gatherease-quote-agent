@@ -82,10 +82,11 @@ app.get('/api/status', async (req, res) => {
 
 // ─── /api/skills (parse openclaw skills list table) ─────
 app.get('/api/skills', async (req, res) => {
-  // 我們關心的 6 個 GatherEase skill
+  // 我們關心的 10 個 GatherEase skill
   const OURS = new Set([
-    'read_drawing', 'get_history_quote', 'calc_cost',
-    'compare_suppliers', 'line_notify', 'send_email'
+    'order_store', 'inbox_watch', 'read_drawing',
+    'get_history_quote', 'check_schedule', 'calc_cost',
+    'compare_suppliers', 'line_notify', 'send_email', 'generate_quote_pdf'
   ]);
   try {
     const out = await execAsync(
@@ -106,6 +107,7 @@ app.get('/api/skills', async (req, res) => {
       gatherease_skills_ready: readySkills,
       gatherease_count: readySkills.length,
       gatherease_total: OURS.size,
+      gatherease_missing: Array.from(OURS).filter(s => !readySkills.includes(s)),
       total_ready_skills: allReady.length,
       all_ready_sample: allReady.slice(0, 8),
       raw_at: new Date().toISOString()

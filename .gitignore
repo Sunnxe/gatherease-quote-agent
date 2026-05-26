@@ -25,6 +25,16 @@ package-lock.json
 logs/*
 !logs/.gitkeep
 
+# ─── Demo 跑出來的訂單 artifact (per-run, 不該進 repo) ───
+workspace/data/orders/*
+!workspace/data/orders/.gitkeep
+workspace/data/incoming/
+
+# ─── Skill 內 lazy install 的 npm dep (sandbox 內自己會裝) ───
+workspace/skills/*/node_modules/
+workspace/skills/*/package.json
+workspace/skills/*/package-lock.json
+
 # ─── 系統 ───
 .DS_Store
 Thumbs.db
