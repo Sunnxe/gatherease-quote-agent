@@ -1,20 +1,12 @@
 #!/usr/bin/env bash
 #
-# scripts/disable-tool-search.sh
+# scripts/disable-tool-search.sh (v2 — avoid newline in nemoclaw exec args)
 #
 # 解決 agent 卡在 tool_search_code wrapper 的問題。
 #
-# OpenClaw 預設啟用 tool_search_code wrapper（compact prompt for large tool catalog），
-# 但 Nemotron 對這個 wrapper 的 API 抓不到——一直猜 require()/openclaw.tools.call({skill,input})
-# 之類錯誤形式，session jsonl 顯示卡 30+ 輪不會脫困。
-#
-# 官方 doc：
-#   "Direct tool exposure is still the right default for small catalogs."
-#   set "tools": { "toolSearch": false } 改回 direct exposure
-#
-# 我們只有 10 個 skill，遠在 small catalog 範圍。
-#
-# 改完跑 nemoclaw recover 讓 gateway reload config。
+# nemoclaw exec grpc 不接受帶 newline 的 args，所以不能用 bash -c '<heredoc>'。
+# 改法：host 端先 base64 encode python script → nemoclaw exec 用 single-line
+# echo + base64 -d 寫進 sandbox /tmp → 再 nemoclaw exec python3 跑那個檔。
 #
 
 set -euo pipefail
@@ -25,35 +17,46 @@ echo "▶ Sandbox: $SANDBOX"
 echo "▶ Config:  $CFG"
 echo ""
 
-echo "▶ 1) Backup current config"
+# ─── Python script 內容（host 端 here-doc 沒事，等下會 base64） ──
+PYSCRIPT=$(cat <<'PYEOF'
+import json, sys
+PATH = "/sandbox/.openclaw/openclaw.json"
+with open(PATH) as f:
+    cfg = json.load(f)
+tools = cfg.setdefault("tools", {})
+prev = tools.get("toolSearch", "(not set, default=true)")
+tools["toolSearch"] = False
+with open(PATH, "w") as f:
+    json.dump(cfg, f, indent=2)
+print(f"  tools.toolSearch: {prev} -> False")
+print(f"  total top-level keys: {list(cfg.keys())}")
+PYEOF
+)
+
+# base64 encode (single line)
+B64=$(echo -n "$PYSCRIPT" | base64 -w0 2>/dev/null || echo -n "$PYSCRIPT" | base64 | tr -d '\n')
+
+echo "▶ 1) Backup current config (sandbox 內)"
 nemoclaw "$SANDBOX" exec -- cp -v "$CFG" "${CFG}.before-toolsearch-disable.$(date +%s)"
 echo ""
 
-echo "▶ 2) 加 tools.toolSearch=false (Python json round-trip)"
-nemoclaw "$SANDBOX" exec -- bash -c "python3 <<'EOF'
-import json, sys
-PATH = '$CFG'
-with open(PATH) as f:
-    cfg = json.load(f)
-tools = cfg.setdefault('tools', {})
-prev = tools.get('toolSearch', '(not set, default=true)')
-tools['toolSearch'] = False
-with open(PATH, 'w') as f:
-    json.dump(cfg, f, indent=2)
-print(f'  tools.toolSearch: {prev} → False')
-print(f'  total config keys: {list(cfg.keys())}')
-EOF"
+echo "▶ 2) 把 python script base64 → 寫 /tmp/disable_toolsearch.py"
+nemoclaw "$SANDBOX" exec -- bash -c "echo $B64 | base64 -d > /tmp/disable_toolsearch.py"
 echo ""
 
-echo "▶ 3) Verify 改完的 config"
-nemoclaw "$SANDBOX" exec -- bash -c "python3 -c 'import json; d=json.load(open(\"$CFG\")); print(\"tools.toolSearch =\", d.get(\"tools\",{}).get(\"toolSearch\"))'"
+echo "▶ 3) 跑 python script (改 config)"
+nemoclaw "$SANDBOX" exec -- python3 /tmp/disable_toolsearch.py
 echo ""
 
-echo "▶ 4) Recover gateway 讓 config 生效"
+echo "▶ 4) Verify 改完 (single-line python -c)"
+nemoclaw "$SANDBOX" exec -- python3 -c "import json; d=json.load(open('$CFG')); print('tools.toolSearch =', d.get('tools',{}).get('toolSearch'))"
+echo ""
+
+echo "▶ 5) Recover gateway 讓 config 生效"
 nemoclaw "$SANDBOX" recover
 echo ""
 
-echo "▶ 5) Verify gateway healthy"
+echo "▶ 6) Verify gateway healthy"
 nemoclaw status --json | python3 -c "
 import json, sys
 d = json.load(sys.stdin)
@@ -67,14 +70,14 @@ echo "════════════════════════�
 echo "✅ tool_search wrapper 已停用"
 echo "════════════════════════════════════════════════════════"
 echo ""
-echo "下一步：dashboard chat 開新 session 試："
-echo "  /new"
-echo "  請列出當前所有訂單"
+echo "下一步：HTML 內按 'Trigger Agent' 試："
+echo "  http://localhost:8000/factory-quote-demo.html"
+echo "  輸入：請列出當前所有訂單"
 echo ""
 echo "agent 現在應該直接 call \`order_store\` skill 而不是進 tool_search_code loop。"
 echo ""
 echo "如果想 rollback："
-echo "  nemoclaw $SANDBOX exec -- ls /sandbox/.openclaw/openclaw.json.before-*"
-echo "  nemoclaw $SANDBOX exec -- cp <backup_file> /sandbox/.openclaw/openclaw.json"
+echo "  nemoclaw $SANDBOX exec -- ls /sandbox/.openclaw/"
+echo "  nemoclaw $SANDBOX exec -- cp /sandbox/.openclaw/openclaw.json.before-toolsearch-disable.<ts> /sandbox/.openclaw/openclaw.json"
 echo "  nemoclaw $SANDBOX recover"
 echo ""

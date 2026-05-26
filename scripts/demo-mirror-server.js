@@ -20,7 +20,7 @@
  */
 
 const express = require('express');
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs/promises');
 const fsSync = require('fs');
@@ -31,6 +31,7 @@ const SANDBOX = process.env.NEMOCLAW_SANDBOX || 'gatherease-quote-agent';
 const PORT = parseInt(process.env.MIRROR_PORT || '8000', 10);
 
 const app = express();
+app.use(express.json({ limit: '64kb' })); // for /api/agent-trigger POST body
 
 // ─── helper: exec promise w/ timeout ────────────────────
 function execAsync(cmd, timeout = 10000) {
@@ -249,22 +250,35 @@ app.get('/api/sandbox-activity', async (req, res) => {
 });
 
 // ─── /api/agent-session (最新 session jsonl transcript) ─
+// 注意：nemoclaw exec grpc 拒絕含 newline 的 args，所以這邊
+// 不能用 `bash -c 'multi-line'`。改成 `ls 單檔` + host 端 sort 挑最新。
 app.get('/api/agent-session', async (req, res) => {
   try {
     const result = await cached('agent-session', async () => {
-      // 找最新 session file
-      const listOut = await execAsync(
-        `nemoclaw ${SANDBOX} exec -- bash -c 'ls -t /sandbox/.openclaw/agents/main/sessions/*.jsonl 2>/dev/null | head -1'`,
-        10000
-      );
-      const sessionFile = listOut.trim();
-      if (!sessionFile || !sessionFile.endsWith('.jsonl')) {
-        return { sessionFile: null, events: [], note: 'no session jsonl yet' };
-      }
+      const SESSIONS_DIR = '/sandbox/.openclaw/agents/main/sessions';
 
-      // Tail 最新 N 行
+      // ls -t 列檔名 (single-line cmd, no bash -c)
+      let listOut;
+      try {
+        listOut = await execAsync(
+          `nemoclaw ${SANDBOX} exec -- ls -t ${SESSIONS_DIR}`,
+          10000
+        );
+      } catch (e) {
+        // dir 還沒存在
+        return { sessionFile: null, events: [], note: 'sessions dir not created yet' };
+      }
+      // 挑最新的 .jsonl
+      const fileName = listOut.split('\n').map(s => s.trim())
+        .find(s => s.endsWith('.jsonl'));
+      if (!fileName) {
+        return { sessionFile: null, events: [], note: 'no session jsonl yet — trigger an agent first' };
+      }
+      const sessionFile = `${SESSIONS_DIR}/${fileName}`;
+
+      // Tail 最新 N 行 (single-line cmd, no bash -c)
       const content = await execAsync(
-        `nemoclaw ${SANDBOX} exec -- tail -80 "${sessionFile}"`,
+        `nemoclaw ${SANDBOX} exec -- tail -80 ${sessionFile}`,
         10000
       );
 
@@ -344,6 +358,43 @@ app.get('/api/agent-session', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message, stderr: e.stderr });
   }
+});
+
+// ─── /api/agent-trigger (POST — 從 HTML 注入 user message 給 sandbox agent) ─
+// Body: { "message": "請列出當前所有訂單" }
+// Spawn nemoclaw exec 跑 openclaw agent，detached + unref → 不擋 HTTP response。
+// 跑出來的 session jsonl 進 /sandbox/.openclaw/agents/main/sessions/，
+// 之後 /api/agent-session poll 會看到。
+app.post('/api/agent-trigger', (req, res) => {
+  const message = (req.body && req.body.message) ? String(req.body.message) : '';
+  if (!message || message.length > 2000) {
+    return res.status(400).json({ error: 'message required, max 2000 chars' });
+  }
+  if (/[\r\n]/.test(message)) {
+    return res.status(400).json({ error: 'message cannot contain newline (nemoclaw exec limitation)' });
+  }
+
+  // Clear /api/agent-session cache so 新 session 立刻可見
+  _cache.delete('agent-session');
+
+  // Fire and forget — nemoclaw exec 會 block (Nemotron 慢)，不能 await
+  const args = [SANDBOX, 'exec', '--', 'openclaw', 'agent', '--agent', 'main', '-m', message];
+  const child = spawn('nemoclaw', args, {
+    detached: true,
+    stdio: 'ignore'
+  });
+  child.on('error', (err) => {
+    console.error('[agent-trigger] spawn error:', err.message);
+  });
+  child.unref();
+
+  console.log(`[agent-trigger] dispatched: "${message}"`);
+  res.json({
+    ok: true,
+    dispatched_at: new Date().toISOString(),
+    message,
+    note: 'agent 在 sandbox 內跑中，poll /api/agent-session 看 session jsonl'
+  });
 });
 
 // ─── /api/audit?n=50 ────────────────────────────────────

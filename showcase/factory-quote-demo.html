@@ -436,6 +436,35 @@
   .at-empty{color:var(--muted);font-size:11px;text-align:center;padding:30px 10px;font-style:italic;
     font-family:'Noto Sans TC',sans-serif}
   .at-session-id{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted)}
+
+  /* Trigger box (注入 user message 給 sandbox agent — 取代 dashboard chat) */
+  .at-trigger{
+    padding:10px 12px;border-bottom:1px solid rgba(255,176,32,0.18);
+    background:rgba(255,176,32,0.04);
+  }
+  .at-trigger-row{display:flex;gap:8px;align-items:stretch}
+  .at-trigger input{
+    flex:1;background:#0a0e0a;border:1px solid rgba(255,176,32,0.3);
+    border-radius:6px;padding:8px 10px;color:var(--ink);
+    font-family:'Noto Sans TC',sans-serif;font-size:12px;outline:none;
+  }
+  .at-trigger input:focus{border-color:var(--nv-green)}
+  .at-trigger button{
+    background:var(--nv-green);color:#0a0e0a;border:none;border-radius:6px;
+    padding:0 14px;font-weight:700;font-size:11px;cursor:pointer;
+    font-family:'Noto Sans TC',sans-serif;white-space:nowrap;
+  }
+  .at-trigger button:hover{background:var(--nv-green-bright)}
+  .at-trigger button:disabled{opacity:.5;cursor:not-allowed}
+  .at-suggestions{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+  .at-suggestions span{
+    font-size:10px;color:var(--muted);padding:3px 8px;border-radius:999px;
+    border:1px solid var(--border);cursor:pointer;background:transparent;
+  }
+  .at-suggestions span:hover{color:var(--nv-green-bright);border-color:var(--nv-green)}
+  .at-trigger-status{font-size:10px;color:var(--muted);margin-top:6px;min-height:14px}
+  .at-trigger-status.ok{color:var(--nv-green-bright)}
+  .at-trigger-status.err{color:#ff7a7a}
 </style>
 </head>
 <body>
@@ -573,8 +602,24 @@
           <span>🧠 Agent Thinking · session transcript</span>
           <span class="live"><span class="pulse"></span>poll 8s</span>
         </div>
+        <!-- Trigger box: 注入 user message 給 sandbox agent (取代 dashboard chat) -->
+        <div class="at-trigger">
+          <div class="at-trigger-row">
+            <input type="text" id="agentInput"
+                   placeholder="跟 sandbox agent 對話：請列出當前所有訂單"
+                   onkeydown="if(event.key==='Enter')triggerAgent()">
+            <button id="agentTriggerBtn" onclick="triggerAgent()">▶ 送給 Agent</button>
+          </div>
+          <div class="at-suggestions">
+            <span onclick="fillAndTrigger('請列出當前所有訂單')">📦 列訂單</span>
+            <span onclick="fillAndTrigger('幫我看 inbox 有沒有新詢價')">📥 收新詢價</span>
+            <span onclick="fillAndTrigger('處理鴻碩電子的詢價 Anti-Static Silicone Roller × 200')">🏭 鴻碩詢價</span>
+            <span onclick="fillAndTrigger('比對最近一筆訂單的三家代工廠報價')">⚖️ 比價</span>
+          </div>
+          <div class="at-trigger-status" id="agentTriggerStatus"></div>
+        </div>
         <div class="at-list" id="agentThinking">
-          <div class="at-empty">等 agent 跑起來... session 還沒建</div>
+          <div class="at-empty">等 agent 跑起來... 上面打字按 ▶ 送給 Agent</div>
         </div>
       </div>
 
@@ -1374,6 +1419,50 @@ async function refreshAgentThinking(){
 }
 refreshAgentThinking();
 setInterval(refreshAgentThinking, 8000);
+
+// ─── Agent Trigger (POST /api/agent-trigger) ───
+async function triggerAgent(){
+  const input = document.getElementById('agentInput');
+  const btn = document.getElementById('agentTriggerBtn');
+  const status = document.getElementById('agentTriggerStatus');
+  const message = (input.value || '').trim();
+  if (!message) {
+    status.className = 'at-trigger-status err';
+    status.textContent = '⚠️ 先打字';
+    return;
+  }
+  btn.disabled = true;
+  status.className = 'at-trigger-status';
+  status.textContent = '⏳ 送 sandbox agent 中...';
+  try {
+    const r = await fetch('/api/agent-trigger', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ message })
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      status.className = 'at-trigger-status err';
+      status.textContent = '✗ ' + (data.error || ('HTTP ' + r.status));
+    } else {
+      status.className = 'at-trigger-status ok';
+      status.textContent = '✓ 已派發 · agent 跑中，下方面板 8 秒內會出現 session';
+      input.value = '';
+      // 即時拉一次，不等下個 8s tick
+      setTimeout(refreshAgentThinking, 2000);
+      setTimeout(refreshAgentThinking, 5000);
+    }
+  } catch (e) {
+    status.className = 'at-trigger-status err';
+    status.textContent = '✗ network error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+function fillAndTrigger(text){
+  document.getElementById('agentInput').value = text;
+  triggerAgent();
+}
 </script>
 </body>
 </html>
