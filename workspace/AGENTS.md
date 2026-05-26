@@ -96,43 +96,58 @@ inbox JSON 已寫到 /sandbox/.openclaw/workspace/data/inbox/74010.json。
 
 **訊號**：webhook 把老闆按鈕注入成新 user message：「老闆已決定 hold_id=xxx choice=0 action=發詢價」
 
-**⛔ 鐵律：必須真的 call send_email × 3 次，不可以 mock supplier_replies 跳過！**
-等廠商真回信再 compare_suppliers，不要自己編三家報價。
+**⛔⛔⛔ 三條鐵律（違反 = 整個 demo 廢掉）**：
+
+1. **必須真的 call send_email × 3 次**，不可以 mock supplier_replies 跳過。等廠商真回信再 compare_suppliers。
+2. **3 個 supplier email 必須先 cat suppliers.json 拿、不可以憑記憶編！**
+   - ❌ 禁止：`supplier-all-steel@test-gatherease.example`、`supplier-1@xxx`、`supplier@example.com` 這類 placeholder/fake domain — **這是早期 demo 的舊資料，現在已經改了**
+   - ✅ 必須：先跑 `cat /sandbox/.openclaw/workspace/data/suppliers.json` 看 JSON 拿真實 email
+3. **每封 RFQ 必須帶 attachments**（圖紙 PDF），body 寫「圖紙見附件」就要真附。
+
+---
 
 **動作**：
 
 ```
 1. order_store get {order_id} → 拿 order state (含 incoming.drawing_attachment_path)
-2. cat /sandbox/.openclaw/workspace/data/suppliers.json → 拿 3 個 supplier email
-   (現在 3 家都是 sunny.liao@gatherease.ai，Demo 由 Sunny 扮 3 家分別回信)
-3. **DRAWING_PATH = order.incoming.drawing_attachment_path** (例 /sandbox/.../incoming/_______.pdf)
+
+2. ⚠️ 強制先 cat suppliers.json 看當下 3 家真實 email，不要憑記憶或從訊息上下文猜：
+   exec bash -c "cat /sandbox/.openclaw/workspace/data/suppliers.json | jq '.suppliers[] | select(.category==\"surface-treatment-vendor\") | {id, name, email: .contact.email}'"
+
+   2026-05 當下 3 家的對應（會變動，永遠以 cat 結果為準）：
+     SUP-001 全鋼表處       → sunny.liao@gatherease.ai
+     SUP-002 大同精密表面   → gathereasebot@gmail.com
+     SUP-003 順興電鍍工業   → xpert.back.work@gmail.com
+
+   ⛔ 看到 *.test-gatherease.example、*.test.example、example.com 就是你在 hallucinate，立刻停下重 cat！
+
+3. DRAWING_PATH = order.incoming.drawing_attachment_path
+   (例 /sandbox/.openclaw/workspace/data/incoming/74011-xxxxx.pdf)
    ⚠️ 如果 incoming.drawing_attachment_path 是 null/missing
    → 改抓 engineering_read._meta.drawing_path 或 inbox JSON 內 attachments[0].saved_path
 
 4. 對每個 supplier (SUP-001/002/003) 各 call send_email 一次:
    send_email {
-     to: <supplier_email>,
-     subject: "【RFQ-<order_id>】" + product_name + " × " + qty + " - <supplier_name>",
+     to: <step 2 cat 出來的 supplier email>,
+     subject: "【RFQ-<order_id>】<product_name> × <qty> - <supplier_name>",
      body: "請貴司報價，產品/數量/規格如下...圖紙見附件，三個工作天內回覆。",
      attachments: [{"path": DRAWING_PATH, "filename": "drawing.pdf"}]
-                   ⚠️ ⚠️ ⚠️ 必須帶 attachments！body 寫「圖紙見附件」就要真附！
-                   ⚠️ 不可以 attachments: [] 寄空附件
    }
 
 5. order_store update {patch: {rfq_sent_to: ["SUP-001","SUP-002","SUP-003"], rfq_sent_at, status: "rfq_sent"}}
-6. 跟 user 講「已寄 RFQ 給 3 家代工廠，等待回信」
-7. (背景) 之後我 poll inbox_watch mode=supplier_reply 等廠商真回信，**不自己編 supplier_replies**
+6. 跟 user 講「已寄 RFQ 給 3 家代工廠：全鋼表處 (sunny.liao@gatherease.ai)、大同精密表面 (gathereasebot@gmail.com)、順興電鍍工業 (xpert.back.work@gmail.com)，等待回信」← 把真實 email 列出來證明沒亂編
+7. (背景) 之後 bridge 自動 inject [EMAIL_IN] 廠商回信 進來，**不自己編 supplier_replies**
 ```
 
-**完整 send_email call 範例（含中文 + 含特殊字元安全 heredoc）**：
+**完整 send_email call 範例（中文 body + 安全 heredoc）**：
 
 ```bash
 cat > /tmp/rfq-sup001.json <<'EOF'
 {
   "to": "sunny.liao@gatherease.ai",
-  "subject": "【RFQ-QUO-2026-0001】矽膠抗靜電包膠輪 × 200 - 全鋼表處",
-  "body": "陳廠長 您好，\n\n請貴司針對下列產品報價：\n產品：矽膠抗靜電包膠輪\n數量：200 隻\n規格：外徑 50mm，塗覆 598mm\n硬度 Shore A 40 ±5\n表面處理：去銳角、毛邊\n\n圖紙見附件。\n請三個工作天內回覆單價與交期。\n\nGatherRoller 敬上",
-  "attachments": [{"path": "/sandbox/.openclaw/workspace/data/incoming/_______.pdf", "filename": "drawing.pdf"}]
+  "subject": "【RFQ-QUO-2026-0002】矽膠抗靜電包膠輪 × 500 - 全鋼表處",
+  "body": "陳廠長 您好，\n\n請貴司針對下列產品報價：\n產品：矽膠抗靜電包膠輪\n數量：500 隻\n規格：外徑 50mm (+0.25/-0.00)，塗覆長度 598mm\n硬度 Shore A 40 ±5\n表面處理：去銳角、毛邊\n\n圖紙見附件。\n請三個工作天內回覆單價與交期。\n\nGatherRoller 敬上",
+  "attachments": [{"path": "/sandbox/.openclaw/workspace/data/incoming/74011-昕叡電子工程圖.pdf", "filename": "drawing.pdf"}]
 }
 EOF
 cat /tmp/rfq-sup001.json | bash /sandbox/.openclaw/workspace/skills/send_email/cli.sh
@@ -408,7 +423,7 @@ sandbox 內 squid HTTP proxy 擋 SMTP/IMAP（非 HTTP protocol）。所以 `send
 
 ## 對 agent 的硬性規矩
 
-1. **絕對不要 hallucinate**：規格 / part number / 單價 / 公司 email — 都從 skill output 拿，不確定就 `null`
+1. **絕對不要 hallucinate**：規格 / part number / 單價 / **供應商 email** — 都從 skill output / data 檔拿，不確定就 cat 真檔。**禁止 placeholder 寄信**：看到自己想填 `*.test.example` / `*.test-gatherease.example` / `supplier@example.com` → 你在編，立刻停下去 cat suppliers.json。
 2. **每個 skill call 都帶 order_id**：除了 inbox_watch poll + order_store create
 3. **絕對不要把 secret echo 進 chat**：API key / access token 出現就停下
 4. **金額千分位**：`NT$ 322,400` 給老闆看
