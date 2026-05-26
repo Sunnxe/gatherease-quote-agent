@@ -132,8 +132,8 @@ async function pollOutbox() {
               try {
                 // 用 nemoclaw exec base64 把 sandbox 內檔讀出來
                 const b64out = await nexec(`nemoclaw ${SANDBOX} exec -- base64 -w0 ${att.path}`, 15000);
-                fsSync.writeFileSync(tmpHost, Buffer.from(b64out.trim(), 'base64'));
-                log('outbox', `  📎 pulled ${att.path} → ${tmpHost} (${fsSync.statSync(tmpHost).size} bytes)`);
+                fs.writeFileSync(tmpHost, Buffer.from(b64out.trim(), 'base64'));
+                log('outbox', `  📎 pulled ${att.path} → ${tmpHost} (${fs.statSync(tmpHost).size} bytes)`);
                 fixedAttachments.push({ ...att, path: tmpHost, _sandbox_origin: att.path });
               } catch (e) {
                 log('outbox', `  ⚠️ pull attachment ${att.path} failed: ${e.message}, skipping`);
@@ -151,7 +151,7 @@ async function pollOutbox() {
         if (Array.isArray(payload.request?.attachments)) {
           for (const att of payload.request.attachments) {
             if (att._sandbox_origin && att.path?.startsWith('/tmp/bridge-attachment-')) {
-              try { fsSync.unlinkSync(att.path); } catch {}
+              try { fs.unlinkSync(att.path); } catch {}
             }
           }
         }
