@@ -15,7 +15,7 @@
  *   # 或 nohup ... &
  */
 
-const { spawnSync, exec } = require('child_process');
+const { spawnSync, exec, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -25,6 +25,11 @@ const SANDBOX_INBOX  = '/sandbox/.openclaw/workspace/data/inbox';
 
 const OUTBOX_POLL_MS = parseInt(process.env.BRIDGE_OUTBOX_POLL_MS || '5000', 10);
 const INBOX_POLL_MS  = parseInt(process.env.BRIDGE_INBOX_POLL_MS  || '30000', 10);
+
+// 自動戳 agent (autonomous heartbeat) — bridge 抓到新信寫完 JSON 後自動 inject
+// user message 給 sandbox agent，agent 自動醒過來開跑。
+// 設 BRIDGE_AUTO_TRIGGER_AGENT=false 可關掉（譬如錄影時手動觸發比較好控時序）
+const AUTO_TRIGGER_AGENT = (process.env.BRIDGE_AUTO_TRIGGER_AGENT || 'true').toLowerCase() !== 'false';
 
 const GMAIL_USER = process.env.GMAIL_USER;
 const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD;
@@ -54,6 +59,27 @@ function nexec(cmd, timeoutMs = 10000) {
 function log(label, msg) {
   const ts = new Date().toISOString();
   console.log(`[${ts}] [${label}] ${msg}`);
+}
+
+// ─── 自動戳 agent ──────────────────────────────────────────
+// bridge poll 抓到新信、寫完 JSON 後呼叫 → agent 自動醒過來
+// 同 LINE webhook 的 injectAgentMessage pattern：detached + stdio:'ignore' + unref
+// agent 在 dashboard chat 看到這條 user message → 自己決定要不要跑 inbox_watch + 後續流程
+function injectAgentMessage(message) {
+  if (!AUTO_TRIGGER_AGENT) {
+    log('inject', `(skipped — BRIDGE_AUTO_TRIGGER_AGENT=false)`);
+    return;
+  }
+  const args = [SANDBOX, 'exec', '--', 'openclaw', 'agent',
+    '--agent', 'main', '-m', message];
+  log('inject', `nemoclaw ${args.slice(0, 6).join(' ')} -m "${message.slice(0, 60)}..."`);
+  try {
+    const child = spawn('nemoclaw', args, { detached: true, stdio: 'ignore' });
+    child.on('error', err => log('inject', `spawn error: ${err.message}`));
+    child.unref();
+  } catch (e) {
+    log('inject', `spawn threw: ${e.message}`);
+  }
 }
 
 // ───────────────────────────────────────────────────────
@@ -332,6 +358,22 @@ async function pollInbox() {
           const jb64 = Buffer.from(JSON.stringify(inboxJson, null, 2), 'utf8').toString('base64');
           await nexec(`nemoclaw ${SANDBOX} exec -- bash -c "mkdir -p ${SANDBOX_INBOX} && echo ${jb64} | base64 -d > ${SANDBOX_INBOX}/${uid}.json"`, 10000);
           log('inbox', `✓ wrote uid=${uid} from=${fromEmail} subject="${subject.slice(0, 40)}" attachments=${atts.length}`);
+
+          // ─── 自動戳 agent (autonomous heartbeat) ───
+          // Classify：subject 開頭有 Re: + 含 RFQ → 廠商回信；否則 → 新詢價
+          const isSupplierReply = /^(re|fwd?):\s*【?(RFQ|rfq)/i.test(subject);
+          const inquiryType = isSupplierReply ? 'supplier_reply' : 'new_inquiry';
+          const scenario = isSupplierReply ? 'C' : 'A';
+          const firstAttPath = atts[0]?.saved_path || '(no attachment)';
+          const injectMsg =
+            `[EMAIL_IN] ${isSupplierReply ? '廠商回信' : '新詢價郵件'}進來：` +
+            `uid=${uid}，` +
+            `寄件人="${fromName || fromEmail}" <${fromEmail}>，` +
+            `主旨「${subject}」，` +
+            `附件 ${atts.length} 個` + (atts.length ? `（${firstAttPath}）` : '') +
+            `。inbox JSON 已寫到 ${SANDBOX_INBOX}/${uid}.json。` +
+            `請走 AGENTS.md 情境 ${scenario}（inbox_watch mode=${inquiryType} 開始處理）。`;
+          injectAgentMessage(injectMsg);
 
           // mark seen with retry (3 attempts)
           let markedSeen = false;

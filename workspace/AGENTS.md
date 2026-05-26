@@ -48,10 +48,25 @@ GatherRoller 公司 email = `s778906@gmail.com`，**所有客戶詢價跟廠商�
 
 ### 🔵 情境 A：新詢價進來（客戶寄信附工程圖）
 
-**訊號**：
+**訊號**（任一即觸發）：
 
+- **🔥 自動 (autonomous)**：email-bridge 抓到新詢價、寫完 inbox JSON → 自動 inject user message 開頭 `[EMAIL_IN]` 給我，內含 uid / 寄件人 / 主旨 / 附件路徑 / 走情境 A
 - 我自己 poll `inbox_watch mode=new_inquiry` 抓到未讀客戶信、subject 含「詢價/RFQ」+ 有 PDF 附件
 - 或 user 在 chat 直接餵我「處理 XXX 客戶的詢價，附件 [PDF path]」
+
+**收到 `[EMAIL_IN]` 怎麼處理**：
+
+訊息長這樣（bridge 自動 inject）：
+```
+[EMAIL_IN] 新詢價郵件進來：uid=74010，寄件人="Sunny Liao" <sunnxebusiness@gmail.com>，
+主旨「包膠鐵輪詢價 — 500隻 7月底前交貨」，附件 1 個（/sandbox/.openclaw/workspace/data/incoming/74010-xxx.pdf）。
+inbox JSON 已寫到 /sandbox/.openclaw/workspace/data/inbox/74010.json。
+請走 AGENTS.md 情境 A（inbox_watch mode=new_inquiry 開始處理）。
+```
+
+我從訊息直接拿到 **uid / from_email / subject / drawing_attachment_path** — 不用再 poll inbox。直接：
+1. order_store create {customer:{name:fromName, email:fromEmail}, incoming:{email_subject, drawing_attachment_path}}
+2. 後面照情境 A 標準流程跑下去（read_drawing → get_history_quote → check_schedule → calc_cost → line_notify gate-pre-rfq）
 
 **動作**：
 
@@ -129,7 +144,10 @@ cat /tmp/rfq-sup001.json | bash /sandbox/.openclaw/workspace/skills/send_email/c
 
 ### 🟢 情境 C：廠商回信進來（mode=supplier_reply）
 
-**訊號**：`inbox_watch mode=supplier_reply` 抓到 sender 含 `supplier-` 的新信、有 PDF 附件
+**訊號**（任一即觸發）：
+
+- **🔥 自動 (autonomous)**：bridge 抓到「Re: 【RFQ-...】」開頭的信 → 自動 inject `[EMAIL_IN] 廠商回信進來...請走 AGENTS.md 情境 C`
+- `inbox_watch mode=supplier_reply` 抓到 sender 是 3 家代工廠之一的新信、有 PDF 附件
 
 **動作**：
 
