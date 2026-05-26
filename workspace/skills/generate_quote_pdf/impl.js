@@ -35,33 +35,28 @@ function fmtMoney(n) {
   return 'NT$ ' + Math.round(n).toLocaleString('en-US');
 }
 
-// 找 Noto Sans TC .ttf path（@expo-google-fonts/noto-sans-tc 內含 .ttf）
+// 找 Noto Sans TC .ttf path（直接 path scan，不靠 require.resolve）
+const NOTO_PKG_DIR = path.join(SKILL_DIR, 'node_modules', '@expo-google-fonts', 'noto-sans-tc');
+
 function findCjkFontPath() {
+  const candidates = ['NotoSansTC_400Regular.ttf', 'NotoSansTC_500Medium.ttf'];
+  for (const c of candidates) {
+    const p = path.join(NOTO_PKG_DIR, c);
+    if (fsSync.existsSync(p)) return p;
+  }
+  // fallback：scan dir 找任何 .ttf
   try {
-    const pkg = require.resolve('@expo-google-fonts/noto-sans-tc/package.json');
-    const dir = path.dirname(pkg);
-    // 找 Regular 400 weight
-    const candidates = ['NotoSansTC_400Regular.ttf', 'NotoSansTC_500Medium.ttf'];
-    for (const c of candidates) {
-      const p = path.join(dir, c);
-      if (fsSync.existsSync(p)) return p;
-    }
-    // fallback：scan dir
-    const files = fsSync.readdirSync(dir).filter(f => f.endsWith('.ttf'));
-    if (files.length) return path.join(dir, files[0]);
+    const files = fsSync.readdirSync(NOTO_PKG_DIR).filter(f => f.endsWith('.ttf'));
+    if (files.length) return path.join(NOTO_PKG_DIR, files[0]);
   } catch {}
   return null;
 }
 
 function findCjkBoldPath() {
-  try {
-    const pkg = require.resolve('@expo-google-fonts/noto-sans-tc/package.json');
-    const dir = path.dirname(pkg);
-    for (const c of ['NotoSansTC_700Bold.ttf', 'NotoSansTC_500Medium.ttf']) {
-      const p = path.join(dir, c);
-      if (fsSync.existsSync(p)) return p;
-    }
-  } catch {}
+  for (const c of ['NotoSansTC_700Bold.ttf', 'NotoSansTC_500Medium.ttf']) {
+    const p = path.join(NOTO_PKG_DIR, c);
+    if (fsSync.existsSync(p)) return p;
+  }
   return null;
 }
 
@@ -132,8 +127,13 @@ async function main() {
   // ─── helpers (reusable layout, 不每次重寫) ───
   const NV_GREEN = '#76B900';
   const setFont = (variant, size, color) => {
-    doc.font(variant === 'bold' ? 'CJK-Bold' : 'CJK')
-       .fontSize(size).fillColor(color || '#1a1a1a');
+    // 如果 CJK font 沒裝起來，fallback to default Helvetica (中文亂碼但不 fatal)
+    if (cjkRegular) {
+      doc.font(variant === 'bold' ? 'CJK-Bold' : 'CJK');
+    } else {
+      doc.font(variant === 'bold' ? 'Helvetica-Bold' : 'Helvetica');
+    }
+    doc.fontSize(size).fillColor(color || '#1a1a1a');
   };
   const hr = (color = '#eee', width = 1) => {
     doc.strokeColor(color).lineWidth(width)
