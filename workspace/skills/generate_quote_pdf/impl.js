@@ -35,16 +35,28 @@ function fmtMoney(n) {
   return 'NT$ ' + Math.round(n).toLocaleString('en-US');
 }
 
-// 找 Noto Sans TC .ttf path（直接 path scan，不靠 require.resolve）
+// 找 Noto Sans CJK TC font path — 優先用 workspace/data/fonts/ (install-cjk-font.sh 寫進去)
+// 次選 npm package @expo-google-fonts/noto-sans-tc/*.ttf
+const WORKSPACE_FONT_DIR = path.join(WORKSPACE_DIR, 'data', 'fonts');
 const NOTO_PKG_DIR = path.join(SKILL_DIR, 'node_modules', '@expo-google-fonts', 'noto-sans-tc');
 
 function findCjkFontPath() {
-  const candidates = ['NotoSansTC_400Regular.ttf', 'NotoSansTC_500Medium.ttf'];
-  for (const c of candidates) {
+  // 優先：workspace/data/fonts/ 內 (install-cjk-font.sh 一次性寫的，確定 work)
+  const workspaceCandidates = [
+    'NotoSansCJKtc-Regular.otf',
+    'NotoSansTC-Regular.ttf',
+    'NotoSansTC_400Regular.ttf'
+  ];
+  for (const c of workspaceCandidates) {
+    const p = path.join(WORKSPACE_FONT_DIR, c);
+    if (fsSync.existsSync(p)) return p;
+  }
+  // 次選：@expo-google-fonts npm package (如果 npm install 真的 bundle .ttf)
+  for (const c of ['NotoSansTC_400Regular.ttf', 'NotoSansTC_500Medium.ttf']) {
     const p = path.join(NOTO_PKG_DIR, c);
     if (fsSync.existsSync(p)) return p;
   }
-  // fallback：scan dir 找任何 .ttf
+  // 最後 fallback：scan npm dir 任何 .ttf
   try {
     const files = fsSync.readdirSync(NOTO_PKG_DIR).filter(f => f.endsWith('.ttf'));
     if (files.length) return path.join(NOTO_PKG_DIR, files[0]);
@@ -53,6 +65,16 @@ function findCjkFontPath() {
 }
 
 function findCjkBoldPath() {
+  const workspaceCandidates = [
+    'NotoSansCJKtc-Bold.otf',
+    'NotoSansCJKtc-Medium.otf',
+    'NotoSansCJKtc-Regular.otf',  // 沒 bold 就回 Regular
+    'NotoSansTC_700Bold.ttf'
+  ];
+  for (const c of workspaceCandidates) {
+    const p = path.join(WORKSPACE_FONT_DIR, c);
+    if (fsSync.existsSync(p)) return p;
+  }
   for (const c of ['NotoSansTC_700Bold.ttf', 'NotoSansTC_500Medium.ttf']) {
     const p = path.join(NOTO_PKG_DIR, c);
     if (fsSync.existsSync(p)) return p;
