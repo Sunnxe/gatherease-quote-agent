@@ -34,14 +34,21 @@ const app = express();
 app.use(express.json({ limit: '64kb' })); // for /api/agent-trigger POST body
 
 // ─── helper: exec promise w/ timeout ────────────────────
+// nemoclaw CLI silent-fails when stdout 是 pipe (non-TTY) — terminal 跑 work
+// 但 Node child_process exec 直接 exit non-zero、stdout/stderr 都空。
+// 解法：用 script(1) (util-linux 內建) 偽造 TTY 包外層，stdout 變 \r\r\n 需 strip。
 function execAsync(cmd, timeout = 10000) {
+  // single-quote escape: ' → '\''
+  const escaped = cmd.replace(/'/g, "'\\''");
+  const wrapped = `script -qec '${escaped}' /dev/null`;
   return new Promise((resolve, reject) => {
-    exec(cmd, { timeout, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
+    exec(wrapped, { timeout, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (err) {
         err.stderr = stderr;
         return reject(err);
       }
-      resolve(stdout.toString());
+      // script(1) inserts \r\r\n line endings; normalize to \n
+      resolve(stdout.toString().replace(/\r\r?\n/g, '\n').replace(/\r/g, ''));
     });
   });
 }
@@ -268,9 +275,11 @@ app.get('/api/agent-session', async (req, res) => {
         // dir 還沒存在
         return { sessionFile: null, events: [], note: 'sessions dir not created yet' };
       }
-      // 挑最新的 .jsonl
+      // 挑最新的 transcript .jsonl
+      // ⚠️ 必須排除 .trajectory.jsonl — 那是 runtime trace，schema 完全不同。
+      // 而且 agent 跑時 trajectory mtime 永遠比 transcript 新，ls -t 會優先看到它。
       const fileName = listOut.split('\n').map(s => s.trim())
-        .find(s => s.endsWith('.jsonl'));
+        .find(s => s.endsWith('.jsonl') && !s.endsWith('.trajectory.jsonl'));
       if (!fileName) {
         return { sessionFile: null, events: [], note: 'no session jsonl yet — trigger an agent first' };
       }
@@ -362,9 +371,9 @@ app.get('/api/agent-session', async (req, res) => {
 
 // ─── /api/agent-trigger (POST — 從 HTML 注入 user message 給 sandbox agent) ─
 // Body: { "message": "請列出當前所有訂單" }
-// Spawn nemoclaw exec 跑 openclaw agent，detached + unref → 不擋 HTTP response。
-// 跑出來的 session jsonl 進 /sandbox/.openclaw/agents/main/sessions/，
-// 之後 /api/agent-session poll 會看到。
+// Spawn nemoclaw exec，pipe stdout/stderr 到 /tmp/agent-trigger.log。
+// 之前 stdio:'ignore' 看不到爆掉，這版會 log，方便 debug。
+const TRIGGER_LOG = '/tmp/gatherease-agent-trigger.log';
 app.post('/api/agent-trigger', (req, res) => {
   const message = (req.body && req.body.message) ? String(req.body.message) : '';
   if (!message || message.length > 2000) {
@@ -377,24 +386,53 @@ app.post('/api/agent-trigger', (req, res) => {
   // Clear /api/agent-session cache so 新 session 立刻可見
   _cache.delete('agent-session');
 
-  // Fire and forget — nemoclaw exec 會 block (Nemotron 慢)，不能 await
+  // 開 append 模式的 fd 給 spawn 用
+  const startedAt = new Date().toISOString();
+  const sep = `\n========== ${startedAt} | "${message}" ==========\n`;
+  fsSync.appendFileSync(TRIGGER_LOG, sep);
+  const logFd = fsSync.openSync(TRIGGER_LOG, 'a');
+
   const args = [SANDBOX, 'exec', '--', 'openclaw', 'agent', '--agent', 'main', '-m', message];
+  console.log(`[agent-trigger] spawn: nemoclaw ${args.join(' ')}`);
+
+  // Pipe stdout + stderr 到 log file，不再 ignore
   const child = spawn('nemoclaw', args, {
     detached: true,
-    stdio: 'ignore'
+    stdio: ['ignore', logFd, logFd]
   });
   child.on('error', (err) => {
     console.error('[agent-trigger] spawn error:', err.message);
+    fsSync.appendFileSync(TRIGGER_LOG, `\nSPAWN ERROR: ${err.message}\n`);
+  });
+  child.on('exit', (code, signal) => {
+    fsSync.appendFileSync(TRIGGER_LOG, `\n[exit] code=${code} signal=${signal} at ${new Date().toISOString()}\n`);
+    fsSync.closeSync(logFd);
   });
   child.unref();
 
-  console.log(`[agent-trigger] dispatched: "${message}"`);
   res.json({
     ok: true,
-    dispatched_at: new Date().toISOString(),
+    dispatched_at: startedAt,
     message,
-    note: 'agent 在 sandbox 內跑中，poll /api/agent-session 看 session jsonl'
+    log_file: TRIGGER_LOG,
+    pid: child.pid,
+    note: 'agent 在 sandbox 內跑中，poll /api/agent-session 看 session jsonl。/api/agent-trigger-log 看 spawn stdout/stderr'
   });
+});
+
+// ─── /api/agent-trigger-log (debug: tail spawn stdout/stderr) ─
+app.get('/api/agent-trigger-log', async (req, res) => {
+  try {
+    if (!fsSync.existsSync(TRIGGER_LOG)) {
+      return res.json({ exists: false, note: '還沒 trigger 過 agent' });
+    }
+    const raw = await fs.readFile(TRIGGER_LOG, 'utf8');
+    const lines = raw.split('\n');
+    // 拿最後 80 行
+    res.type('text/plain').send(lines.slice(-80).join('\n'));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ─── /api/audit?n=50 ────────────────────────────────────
