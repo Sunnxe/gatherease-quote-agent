@@ -243,7 +243,11 @@ async function pollInbox() {
           const sandboxIncoming = `/sandbox/.openclaw/workspace/data/incoming`;
           const atts = [];
           for (const att of (parsed.attachments || [])) {
-            const safeName = (att.filename || `att-${Date.now()}.bin`).replace(/[^\w.\-]/g, '_');
+            // sanitize: 保留中文 (一-鿿) + 全形符號 + 英數 + . - _
+            // 加 uid prefix 避免多封信同名附件覆蓋
+            const origName = att.filename || `att-${Date.now()}.bin`;
+            const cleanName = origName.replace(/[^\w.\-一-鿿㐀-䶿]/g, '_');
+            const safeName = `${uid}-${cleanName}`;
             const b64 = att.content.toString('base64');
             const rawBytes = att.content.length;
             try {
