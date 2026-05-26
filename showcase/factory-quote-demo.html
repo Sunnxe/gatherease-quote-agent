@@ -623,15 +623,9 @@
         </div>
       </div>
 
-      <div class="controls">
-        <button class="btn-play" id="playBtn" onclick="runDemo()">▶ 播放 Demo</button>
-        <button class="btn-reset" onclick="resetDemo()">重置</button>
-        <div class="hint">老闆在 LINE 上指揮、簽核；右側即時顯示 NemoClaw 治理層在每一步守門。</div>
-      </div>
-
       <div class="panel">
         <div class="ph">多 Agent 協作 · OpenClaw
-          <span class="live"><span class="pulse"></span>協作中</span>
+          <span class="live" id="multiAgentLiveLabel"><span class="pulse"></span>kernel-active · live</span>
         </div>
         <div class="agents" id="agents">
           <div class="agt" id="agt-engineer">
@@ -653,27 +647,10 @@
       </div>
 
       <div class="panel">
-        <div class="ph">Agent 工作流 · Tool Calling
-          <span class="live"><span class="pulse"></span>自主執行</span>
+        <div class="ph">Skill Timeline · 自主執行軌跡
+          <span class="live" id="timelineLiveLabel"><span class="pulse"></span>live · /api/agent-session</span>
         </div>
-        <div class="flow" id="flow"></div>
-      </div>
-
-      <div class="panel">
-        <div class="ph">NemoClaw 治理日誌
-          <span class="live"><span class="pulse"></span>即時監控</span>
-        </div>
-        <div class="log" id="log"><div class="empty">尚未有治理事件</div></div>
-      </div>
-
-      <div class="panel">
-        <div class="ph">即時治理佔比</div>
-        <div class="score">
-          <div class="item"><div class="num g" id="sAllow">0</div><div class="lb">放行 ALLOW</div></div>
-          <div class="item"><div class="num r" id="sBlock">0</div><div class="lb">攔截 BLOCK</div></div>
-          <div class="item"><div class="num y" id="sHold">0</div><div class="lb">人類確認 HOLD</div></div>
-          <div class="item big"><div class="num" id="sRatio">0%</div><div class="lb">人類/守門介入比例 (HOLD+BLOCK)</div></div>
-        </div>
+        <div class="flow" id="flow"><div class="empty">等 agent 跑 skill 就會看到 timeline</div></div>
       </div>
     </div>
   </div>
@@ -687,47 +664,13 @@
 <script>
 const chat = document.getElementById('chat');
 const flowEl = document.getElementById('flow');
-const logEl = document.getElementById('log');
-const playBtn = document.getElementById('playBtn');
 
+// ─── 死碼相容 stub (舊 runDemo 還在 source、但已無 button 觸發) ───
+// 保留 addLog/updateScore/initFlow/stepState 作為 no-op，避免如果有人手動 console call 也不會炸
+const logEl = { innerHTML: '', appendChild(){}, scrollTop: 0, scrollHeight: 0, querySelector(){return null;} };
 let counts = {allow:0, block:0, hold:0, total:0};
-
-// flow steps definition
-const STEPS = [
-  {id:'s1', label:'接收客戶詢價單（含交期/品質要求）', tag:'IN'},
-  {id:'s1b', label:'工程判讀 Sub-Agent：讀圖面、定產品/BOM', tag:'CTL'},
-  {id:'s2', label:'拆解 BOM（鐵輪採購/處理代工/包膠自製）', tag:'IN'},
-  {id:'s3', label:'查詢鐵輪採購價 + 今日膠料價', tag:'IN'},
-  {id:'s3c', label:'生管 Sub-Agent：產線排程評估', tag:'CTL'},
-  {id:'s3b', label:'計算材料 + 工時成本', tag:'CTL'},
-  {id:'s4', label:'發詢價給廠商（價格/交期/品質）', tag:'OUT', gate:true},
-  {id:'s4b', label:'收信安全側錄（injection 防禦）', tag:'CTL'},
-  {id:'s5', label:'多維度彙整比價', tag:'CTL'},
-  {id:'s6', label:'權衡 trade-off → 回報老闆討論', tag:'CTL', gate:true},
-  {id:'s7', label:'擋下套機密的人（保護老闆）', tag:'CTL', gate:true},
-  {id:'s8', label:'產生報價建議', tag:'CTL'},
-  {id:'s9', label:'最終報價 → 老闆簽核', tag:'OUT', gate:true},
-  {id:'s10', label:'發加密報價單給客戶 + 寫進系統', tag:'OUT'},
-];
-
-function initFlow(){
-  flowEl.innerHTML = '';
-  STEPS.forEach(s=>{
-    const d = document.createElement('div');
-    d.className = 'step' + (s.gate?' gate-ic':'');
-    d.id = 'flow-'+s.id;
-    d.innerHTML = `<div class="ic">○</div><div>${s.label}</div><div class="tag ${s.tag}">${s.tag}</div>`;
-    flowEl.appendChild(d);
-  });
-}
-function stepState(id, state){
-  const el = document.getElementById('flow-'+id);
-  if(!el) return;
-  el.classList.remove('active','done');
-  const ic = el.querySelector('.ic');
-  if(state==='active'){el.classList.add('active'); ic.textContent='◌';}
-  if(state==='done'){el.classList.add('done'); ic.textContent='✓';}
-}
+function initFlow(){ /* live render 取代，see refreshSkillTimeline() */ }
+function stepState(){ /* dead code from old scripted demo */ }
 
 // ---- multi-agent collaboration driver ----
 function agtActivate(who){
@@ -761,27 +704,9 @@ function resetAgents(){
   });
 }
 
-function addLog(level, text, ep){
-  if(logEl.querySelector('.empty')) logEl.innerHTML='';
-  const map={allow:'ALLOW',block:'BLOCK',hold:'HOLD'};
-  const d=document.createElement('div');
-  d.className='logline '+level;
-  d.innerHTML=`<span class="lv">${map[level]}</span><span class="lt">${text}${ep?` <span class="ep">${ep}</span>`:''}</span>`;
-  logEl.appendChild(d);
-  logEl.scrollTop=logEl.scrollHeight;
-  counts[level]++; counts.total++;
-  updateScore();
-}
-function updateScore(){
-  document.getElementById('sAllow').textContent=counts.allow;
-  document.getElementById('sBlock').textContent=counts.block;
-  document.getElementById('sHold').textContent=counts.hold;
-  // 「治理介入比例」= 真實 hold/block 攔下的比例（非 allow）
-  // 跑完 demo 全流程預期約 30-40%、表示 ~1/3 的 agent 動作需要老闆把關
-  const intervened = counts.block + counts.hold;
-  const pct = counts.total ? Math.round((intervened / counts.total) * 100) : 0;
-  document.getElementById('sRatio').textContent = pct + '%';
-}
+// 死碼 stub — 舊 runDemo 還會 call、但 panel 已拿掉 → 變 no-op
+function addLog(){ /* removed: 治理日誌 panel 已 wire 到 Sandbox Activity，舊 hardcoded 不再用 */ }
+function updateScore(){ /* removed: 即時治理佔比 panel 已拿掉 */ }
 
 // chat helpers
 function clearEmpty(){const e=document.getElementById('emptyChat'); if(e)e.remove();}
@@ -1254,19 +1179,7 @@ async function runDemo(){
   playBtn.disabled=false; playBtn.textContent='▶ 重播 Demo';
 }
 
-function resetDemo(){
-  chat.innerHTML='<div class="empty" id="emptyChat"><div style="font-size:34px;line-height:1;margin-bottom:14px;">📱</div><div style="font-weight:700;color:#3a4250;font-size:13px;margin-bottom:6px;">桐聚 AI 報價助手</div><div style="color:#5a6878;font-size:11.5px;line-height:1.5;margin-bottom:14px;">客戶詢價進來 → 工程判讀 → 多廠商比價 → 老闆簽核 → 加密報價送出</div><div style="background:rgba(118,185,0,0.18);border:1px dashed rgba(118,185,0,0.5);border-radius:9px;padding:8px 11px;color:#3a6a00;font-size:11px;font-weight:600;line-height:1.5;">⏱ 老闆人工 ~9 hr<br>⚡ AI 自動 ~30 s</div><div style="margin-top:18px;color:#9aacbf;font-size:10.5px;">按「▶ 播放 Demo」開始</div></div>';
-  logEl.innerHTML='<div class="empty">尚未有治理事件</div>';
-  hideSupplier(); clearSupplier();
-  hideEng(); clearEng(); hideSys(); clearSys(); hideLabel();
-  resetAgents();
-  document.querySelector('#supplierView .sv-title').textContent='廠商端 · 收件匣';
-  counts={allow:0,block:0,hold:0,total:0};
-  updateScore();
-  initFlow();
-}
-
-initFlow();
+function resetDemo(){ /* 死碼：play/reset 按鈕已拿掉，無 caller */ }
 
 // ─── Live mirror: fetch real OpenClaw/NemoClaw state from demo-mirror-server.js ───
 // 只有跑在 http(s):// (透過 scripts/start-demo-mirror.sh) 才會 update real data。
@@ -1420,6 +1333,190 @@ async function refreshAgentThinking(){
 refreshAgentThinking();
 setInterval(refreshAgentThinking, 8000);
 
+// ─── Multi-agent + Skill Timeline LIVE (Q1 + Q2 panels) ───
+// 1 個 main agent (OpenClaw sandbox) 用 10 個 skill，每個 skill 標了「邏輯 role」
+// 在 dashboard 視覺上呈現：哪個 role 正在處理 + skill 軌跡時間線。
+const SKILL_TO_ROLE = {
+  read_drawing:       'engineer',
+  check_schedule:     'planner',
+  calc_cost:          'quote',
+  compare_suppliers:  'quote',
+  generate_quote_pdf: 'quote',
+  order_store:        'quote',
+  inbox_watch:        'quote',
+  send_email:         'quote',
+  line_notify:        'quote',
+  get_history_quote:  'quote'
+};
+
+const SKILL_LABEL = {
+  read_drawing:       '📐 讀工程圖',
+  check_schedule:     '📅 排程評估',
+  calc_cost:          '💰 算成本',
+  compare_suppliers:  '⚖️ 三家比價',
+  generate_quote_pdf: '📄 出報價 PDF',
+  order_store:        '📒 訂單狀態',
+  inbox_watch:        '📥 收信',
+  send_email:         '📧 寄信',
+  line_notify:        '📱 推 LINE',
+  get_history_quote:  '🔍 查歷史單'
+};
+
+// 從 exec command 字串抓 skill name
+function parseSkillFromCommand(cmd) {
+  if (!cmd || typeof cmd !== 'string') return null;
+  const m = cmd.match(/skills\/([a-z_]+)\/cli\.sh/);
+  return m ? m[1] : null;
+}
+
+// 從 toolCall args (可能是 string or object) 拿到內含 command 字串
+function extractCommand(text) {
+  if (!text) return '';
+  // text 可能是 JSON string like '{"command":"...", "env":{}}'，或直接是 command
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && parsed.command) return parsed.command;
+    return text;
+  } catch {
+    return text;
+  }
+}
+
+// 友善時間 (HH:MM:SS)
+function fmtTime(ts) {
+  if (!ts) return '';
+  try {
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString('zh-TW', { hour12: false });
+  } catch { return ''; }
+}
+
+async function refreshMultiAgentAndTimeline() {
+  try {
+    const r = await fetch('/api/agent-session');
+    if (!r.ok) return;
+    const data = await r.json();
+    const events = data.events || [];
+
+    // ───── Multi-Agent panel ─────
+    const roleState = {
+      engineer: { skills: [], last_thinking: null, ts: 0 },
+      planner:  { skills: [], last_thinking: null, ts: 0 },
+      quote:    { skills: [], last_thinking: null, ts: 0 }
+    };
+    // 最近 1-2 個 thinking 跟對應 role 配對（簡化：thinking 算給「下一個 tool_call 的 role」）
+    let pendingThinking = null;
+    let mostRecentRole = null;
+    let mostRecentTs = 0;
+
+    // ───── Timeline data ─────
+    const timeline = [];   // {skill, ts, status, role, summary}
+
+    for (const ev of events) {
+      const ts = ev.ts ? new Date(ev.ts).getTime() : 0;
+      if (ev.role === 'thinking') {
+        pendingThinking = (ev.text || '').slice(0, 90);
+      } else if (ev.role === 'tool_call') {
+        const cmd = extractCommand(ev.text);
+        const skill = parseSkillFromCommand(cmd);
+        if (!skill) continue;
+        const role = SKILL_TO_ROLE[skill] || 'quote';
+
+        roleState[role].skills.push(skill);
+        if (pendingThinking) {
+          roleState[role].last_thinking = pendingThinking;
+          pendingThinking = null;
+        }
+        roleState[role].ts = ts;
+
+        if (ts > mostRecentTs) { mostRecentTs = ts; mostRecentRole = role; }
+
+        timeline.push({ skill, role, ts: ev.ts, status: 'running', summary: '' });
+      } else if (ev.role === 'tool_result') {
+        // 把最後一筆 timeline 改成 done / error
+        if (timeline.length > 0) {
+          const last = timeline[timeline.length - 1];
+          last.status = ev.is_error ? 'error' : 'done';
+          // 抓 result 第一行精簡 summary
+          const text = (ev.text || '').replace(/\/bin\/bash:.*?\n/, '');  // 去掉 oom_score_adj 噪音
+          const firstJsonLine = text.split('\n').find(l => l.trim().startsWith('{')) || text;
+          last.summary = firstJsonLine.slice(0, 100);
+        }
+      }
+    }
+
+    // ───── 渲染 Multi-Agent ─────
+    for (const role of ['engineer','planner','quote']) {
+      const box = document.getElementById('agt-' + role);
+      const think = document.getElementById('think-' + role);
+      const act = document.getElementById('act-' + role);
+      if (!box) continue;
+      const s = roleState[role];
+
+      // class active/done
+      box.classList.remove('active','done');
+      if (s.skills.length > 0) {
+        if (role === mostRecentRole) box.classList.add('active');
+        else box.classList.add('done');
+      }
+
+      // think text
+      if (think) {
+        if (s.last_thinking) {
+          think.innerHTML = '💭 ' + s.last_thinking.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        } else if (s.skills.length > 0) {
+          think.textContent = '已完成 ' + s.skills.length + ' 次 skill 呼叫';
+        } else {
+          think.textContent = '待命中…';
+        }
+      }
+
+      // action — 跑過哪些 skill
+      if (act) {
+        if (s.skills.length === 0) {
+          act.innerHTML = '';
+        } else {
+          const uniqSkills = [...new Set(s.skills)];
+          const labels = uniqSkills.map(sk => SKILL_LABEL[sk] || sk);
+          const running = role === mostRecentRole ? '<span class="agt-spin"></span>' : '<span class="ok">✅</span> ';
+          act.innerHTML = running + labels.join(' · ');
+        }
+      }
+    }
+
+    // ───── 渲染 Skill Timeline ─────
+    const flowDiv = document.getElementById('flow');
+    if (flowDiv) {
+      if (timeline.length === 0) {
+        flowDiv.innerHTML = '<div class="empty">等 agent 跑 skill 就會看到 timeline</div>';
+      } else {
+        // 倒序顯示（最新在上）
+        const recent = timeline.slice(-25).reverse();
+        flowDiv.innerHTML = recent.map(t => {
+          const label = SKILL_LABEL[t.skill] || t.skill;
+          const ic = t.status === 'done' ? '✓' : t.status === 'error' ? '✗' : '◌';
+          const cls = t.status === 'done' ? 'step done' : (t.status === 'error' ? 'step done' : 'step active');
+          const roleColor = t.role === 'engineer' ? '#7fb0ff' : t.role === 'planner' ? '#e0b94a' : '#76B900';
+          const errStyle = t.status === 'error' ? 'background:#ff7a7a;border-color:#ff7a7a;color:#fff' : '';
+          const sumText = (t.summary || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          const ts = fmtTime(t.ts);
+          return `<div class="${cls}" style="opacity:1">
+            <div class="ic" style="${errStyle}">${ic}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:700;color:${roleColor};font-size:12.5px">${label}</div>
+              <div style="font-size:10.5px;color:var(--muted);font-family:'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${sumText || '...'}</div>
+            </div>
+            <div style="font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace">${ts}</div>
+          </div>`;
+        }).join('');
+      }
+    }
+  } catch (e) { /* silent — file:// 開時 fetch 會 fail */ }
+}
+refreshMultiAgentAndTimeline();
+setInterval(refreshMultiAgentAndTimeline, 8000);
+
 // ─── Agent Trigger (POST /api/agent-trigger) ───
 async function triggerAgent(){
   const input = document.getElementById('agentInput');
@@ -1451,6 +1548,8 @@ async function triggerAgent(){
       // 即時拉一次，不等下個 8s tick
       setTimeout(refreshAgentThinking, 2000);
       setTimeout(refreshAgentThinking, 5000);
+      setTimeout(refreshMultiAgentAndTimeline, 2000);
+      setTimeout(refreshMultiAgentAndTimeline, 5000);
     }
   } catch (e) {
     status.className = 'at-trigger-status err';
