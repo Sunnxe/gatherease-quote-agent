@@ -598,10 +598,17 @@
 
       <!-- Agent Thinking · 真實 session transcript (LLM 內部 user/assistant/tool turns) -->
       <div class="at-panel">
-        <div class="ph">
+        <div class="ph" style="gap:8px">
           <span>🧠 Agent Thinking · session transcript</span>
-          <span class="live"><span class="pulse"></span>poll 8s</span>
+          <div style="display:flex;gap:8px;align-items:center;margin-left:auto">
+            <button id="resetDemoBtn" onclick="resetDemoState()" title="清乾淨 sandbox sessions / orders / inbox / line pending，準備跑全新 e2e demo"
+              style="background:transparent;border:1px solid #ff7a7a;color:#ff7a7a;padding:4px 10px;border-radius:6px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit;transition:.15s;letter-spacing:.3px">
+              🔄 清資料 / 新 session
+            </button>
+            <span class="live"><span class="pulse"></span>poll 8s</span>
+          </div>
         </div>
+        <div class="at-trigger-status" id="resetStatus" style="display:none;padding:6px 14px;font-size:10.5px;border-bottom:1px solid var(--border)"></div>
         <!-- Trigger box: 注入 user message 給 sandbox agent (取代 dashboard chat) -->
         <div class="at-trigger">
           <div class="at-trigger-row">
@@ -1516,6 +1523,52 @@ async function refreshMultiAgentAndTimeline() {
 }
 refreshMultiAgentAndTimeline();
 setInterval(refreshMultiAgentAndTimeline, 8000);
+
+// ─── Reset Demo (POST /api/reset-demo) ───
+// 清乾淨 sandbox sessions / orders / inbox / line pending — 準備跑全新 e2e demo
+async function resetDemoState() {
+  const btn = document.getElementById('resetDemoBtn');
+  const status = document.getElementById('resetStatus');
+
+  // 確認 dialog（避免錄影時誤點）
+  if (!confirm('⚠️ 確定要清掉這個 demo 的所有資料嗎？\n\n會清掉：\n• Sandbox agent sessions（dashboard chat 歷史）\n• 所有訂單 QUO-XXXX\n• Inbox 已抓的 email JSON\n• LINE pending hold 紀錄\n\n注意：bridge 不會重啟、skills 不會重 deploy。')) return;
+
+  btn.disabled = true;
+  btn.style.opacity = '0.5';
+  status.style.display = 'block';
+  status.style.background = 'rgba(255,176,32,0.1)';
+  status.style.color = 'var(--hold)';
+  status.textContent = '⏳ 清資料中...';
+
+  try {
+    const r = await fetch('/api/reset-demo', { method: 'POST' });
+    const data = await r.json();
+    if (r.ok && data.ok) {
+      status.style.background = 'rgba(118,185,0,0.1)';
+      status.style.color = 'var(--nv-green-bright)';
+      status.textContent = `✓ 清乾淨了 · ${data.cleared.join(' / ')} · ${new Date(data.reset_at).toLocaleTimeString('zh-TW',{hour12:false})}`;
+      // 立刻 refresh 所有 panel
+      setTimeout(() => {
+        refreshAgentThinking();
+        refreshMultiAgentAndTimeline();
+        refreshSandboxActivity();
+      }, 500);
+      // 3 秒後隱藏 status
+      setTimeout(() => { status.style.display = 'none'; }, 3500);
+    } else {
+      status.style.background = 'rgba(255,59,59,0.1)';
+      status.style.color = '#ff7a7a';
+      status.textContent = '✗ 失敗：' + (data.error || ('HTTP ' + r.status));
+    }
+  } catch (e) {
+    status.style.background = 'rgba(255,59,59,0.1)';
+    status.style.color = '#ff7a7a';
+    status.textContent = '✗ 連不到 mirror server: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.style.opacity = '1';
+  }
+}
 
 // ─── Agent Trigger (POST /api/agent-trigger) ───
 async function triggerAgent(){

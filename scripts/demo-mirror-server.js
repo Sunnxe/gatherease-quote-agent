@@ -420,6 +420,39 @@ app.post('/api/agent-trigger', (req, res) => {
   });
 });
 
+// ─── /api/reset-demo (清乾淨重來) ──────────────────────
+// 從 dashboard 一鍵清乾淨：sessions, orders, inbox, line_notify pending, outbox 卡住的信
+// 不會清 sandbox 內 skills 本身（不用每次重 deploy）
+app.post('/api/reset-demo', async (req, res) => {
+  try {
+    const cmd = `
+      rm -f /sandbox/.openclaw/agents/main/sessions/*.jsonl
+      rm -f /sandbox/.openclaw/workspace/data/orders/*.json
+      rm -f /sandbox/.openclaw/workspace/data/inbox/*.json
+      rm -f /sandbox/.openclaw/workspace/skills/line_notify/pending/*.json
+      mkdir -p /sandbox/.openclaw/workspace/data/outbox/failed
+      mv /sandbox/.openclaw/workspace/data/outbox/*.json /sandbox/.openclaw/workspace/data/outbox/failed/ 2>/dev/null || true
+      echo "✓ reset"
+    `.trim().replace(/\n\s*/g, ' && ');
+
+    const out = await execAsync(`nemoclaw ${SANDBOX} exec -- bash -c "${cmd}"`, 15000);
+
+    // 清 mirror server cache，下個 /api/agent-session fetch 不會看到舊資料
+    _cache.delete('agent-session');
+    _cache.delete('activity');
+
+    res.json({
+      ok: true,
+      reset_at: new Date().toISOString(),
+      cleared: ['sessions', 'orders', 'inbox', 'line_notify_pending', 'outbox_stuck'],
+      sandbox_stdout: out.trim().slice(-200),
+      note: 'dashboard 重新整理或 8s polling 後面板會 reset 成空狀態'
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message, stderr: e.stderr });
+  }
+});
+
 // ─── /api/agent-trigger-log (debug: tail spawn stdout/stderr) ─
 app.get('/api/agent-trigger-log', async (req, res) => {
   try {
