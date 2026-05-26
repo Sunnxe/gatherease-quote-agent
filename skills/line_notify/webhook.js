@@ -19,12 +19,26 @@
 
 const line = require('@line/bot-sdk');
 const express = require('express');
+const { spawn } = require('child_process');
 const { resolveHold } = require('./index');
 
 const lineConfig = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET
 };
+
+// Sandbox 名稱 — webhook 注入 agent message 要用
+const SANDBOX = process.env.NEMOCLAW_SANDBOX || 'gatherease-quote-agent';
+
+// 注入 agent user message — postback 拿到 hold_id/choice 後通知 sandbox agent 繼續
+function injectAgentMessage(message) {
+  const args = [SANDBOX, 'exec', '--', 'openclaw', 'agent',
+    '--agent', 'main', '-m', message];
+  console.log(`[inject] nemoclaw ${args.join(' ')}`);
+  const child = spawn('nemoclaw', args, { detached: true, stdio: 'ignore' });
+  child.on('error', err => console.error(`[inject] spawn error: ${err.message}`));
+  child.unref();
+}
 
 function startWebhook(port = process.env.LINE_WEBHOOK_PORT || 3000) {
   if (!lineConfig.channelSecret || !lineConfig.channelAccessToken) {
@@ -121,14 +135,33 @@ async function handleEvent(event) {
 
     console.log(`[webhook] postback from ${userId.slice(0, 8)}... hold=${hold_id} choice=${choice} (${label})`);
 
+    // (1) Legacy orchestrator path — host 端在 await hold 的話接得到
     const resolved = resolveHold(hold_id, choice, label);
-    if (!resolved) {
-      console.warn(`[webhook] No matching pending HOLD for ${hold_id} — orchestrator 沒在等這個事件（可能 demo 重跑了）`);
+    if (resolved) {
+      console.log(`[webhook] resolveHold matched — legacy orchestrator continues`);
     }
+
+    // (2) Plan A path — 注入 user message 給 sandbox agent
+    //     agent 收到 "[LINE_CB] 老闆已決定..." 應該 lookup line_notify pending dir 找 hold_id，
+    //     拿到完整 hold context (gate, summary, options) 然後從 GATE 後繼續流程
+    const injectMsg = `[LINE_CB] 老闆已決定 hold_id=${hold_id} choice=${choice} action=${label}. 請查看 skills/line_notify/pending/${hold_id}.json 拿完整 hold context，繼續對應流程 (例如 GATE-pre-rfq 就 send_email 詢價、GATE-final 就 generate_quote_pdf+send_email)。`;
+    injectAgentMessage(injectMsg);
+
     return;
   }
 
-  // follow / message = 用來抓老闆的 LINE userId（第一次接通用）
+  // text message = 用戶在 LINE 直接打字
+  if (event.type === 'message' && event.message.type === 'text') {
+    const userId = event.source.userId;
+    const text = event.message.text;
+    console.log(`[webhook] text message from ${userId.slice(0, 8)}...: "${text.slice(0, 50)}"`);
+
+    // 注入給 agent 處理 (例如老闆問「目前訂單狀態」、「處理 XXX 詢價」)
+    injectAgentMessage(text);
+    return;
+  }
+
+  // follow / 其他 message = 用來抓老闆的 LINE userId（第一次接通用）
   if (event.type === 'follow' || event.type === 'message') {
     const userId = event.source.userId;
     console.log(`[webhook] ${event.type} from userId = ${userId}`);

@@ -198,6 +198,51 @@ GatherRoller 公司 email = `s778906@gmail.com`，**所有客戶詢價跟廠商�
 
 **重要**：line_notify push 完 → 我用 user-facing 訊息講「已推送給廖老闆，等回覆中」→ session 自然暫停 → 老闆按 LINE → user message 進來 → 我看到才動下一步。
 
+### 我收到 `[LINE_CB]` 訊息怎麼處理
+
+webhook 注入的 user message 格式長這樣：
+```
+[LINE_CB] 老闆已決定 hold_id=gate-pre-rfq-1779710149728-xxxx choice=0 action=發詢價. 請查看 skills/line_notify/pending/<hold_id>.json 拿完整 hold context，繼續對應流程
+```
+
+**我要做的 3 步驟**：
+
+1. **讀 pending JSON 拿 hold context**：
+   ```
+   exec bash -c 'cat /sandbox/.openclaw/workspace/skills/line_notify/pending/<hold_id>.json'
+   ```
+   JSON 內含 `gate` (哪個守門點)、`summary`、`options`、`order_id`（如果有綁訂單）
+
+2. **對照 gate 找對應情境繼續**：
+   | gate | choice 對應 action | 下一步 |
+   |---|---|---|
+   | gate-1-secret-probe | 0=「仍正常報價」 / 1=「暫停」 / 2=「回信婉拒」 | 走情境 F 對應動作 |
+   | gate-pre-rfq | 0=「發詢價」 / 1=「修改名單」 / 2=「取消」 | 走**情境 B** (send_email 3 RFQ) |
+   | gate-2-tradeoff-decision | 0=「選永鎵」 / 1=「選新鎏鍍 + 延 3 天」 / 2=「取消」 | 走**情境 D** (update supplier_choice) |
+   | gate-3-final-quote-signoff | 0=「簽核並寄出」 / 1=「修改價格」 / 2=「取消」 | 走**情境 E** (generate_quote_pdf + send_email 客戶) |
+
+3. **更新 order_store audit + status**：
+   ```
+   order_store append_audit {order_id, entry: {gate, hold_id, choice, action, at}}
+   order_store update {order_id, patch: {status: "後續狀態"}}
+   ```
+
+**❌ 我絕對不要**：在收到 `[LINE_CB]` 前自己揣測老闆回什麼、自己代發 RFQ 或寄報價單。沒等到注入訊息我就只該回「等廖老闆 LINE 簽核中」就停。
+
+---
+
+## 📧 Bridge mode：send_email / inbox_watch 在 sandbox 內怎麼跑
+
+sandbox 內 squid HTTP proxy 擋 SMTP/IMAP（非 HTTP protocol）。所以 `send_email` / `inbox_watch` 兩個 skill 在 sandbox 內**自動切 bridge mode**：
+
+- **`send_email`** call → 不直連 SMTP，**寫 JSON 到 `data/outbox/<id>.json`** → host email-bridge.js 5-10s 內撿走、用 SMTP 真寄 → mv 到 `outbox/sent/`。回應是 `{status: "queued", outbox_id, ...}`（不是 `"sent"`）。
+- **`inbox_watch`** call → 不直連 IMAP，**讀 `data/inbox/*.json`**（host bridge 已 IMAP poll 過寫進去的）。如果沒新詢價 inbox 是空的，回 `fetched_count: 0`。
+
+**對我 agent 的意義**：兩個 skill 介面沒變，我繼續一樣 call 就好。差別只是：
+- `send_email` 回 `queued` 表示已交給 bridge，不要把它當「寄不出去」error
+- `inbox_watch` 不需要等 IMAP，純讀檔超快（但 host bridge 30s 才 poll 一次 IMAP，所以新詢價有 ~30s 延遲）
+- 附件 PDF 已被 bridge 寫到 `data/incoming/<uid>-<filename>.pdf`（檔名前綴是 IMAP uid 避免衝突），我用 `read_drawing` 時帶這個完整 path
+
 如果 5 分鐘沒回 → 我主動跟 user 講「老闆是不是在忙？要重新推一次嗎？」
 
 ---
