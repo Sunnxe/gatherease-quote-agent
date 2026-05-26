@@ -216,14 +216,19 @@ async function pollInbox() {
 
         for (const uid of targetUids) {
           if (lastSeenUids.has(uid)) continue;
-          let msg;
+          // imapflow fetch 預設 range 是 sequence number。要明確 { uid: true } 才把 uid 當 uid。
+          // 用 async iterator form 最 robust (fetchOne 在某些版本可能語意不一致)
+          let msg = null;
           try {
-            msg = await client.fetchOne(uid, { source: true, envelope: true, uid: true });
+            for await (const m of client.fetch(`${uid}:${uid}`, { source: true, envelope: true, uid: true }, { uid: true })) {
+              msg = m;
+              break;
+            }
           } catch (e) {
-            log('inbox', `⚠️ fetchOne uid=${uid} failed: ${e.message}`);
+            log('inbox', `⚠️ fetch uid=${uid} failed: ${e.message}`);
             continue;
           }
-          if (!msg || !msg.source) { log('inbox', `⚠️ uid=${uid} fetch empty, skip`); continue; }
+          if (!msg || !msg.source) { log('inbox', `⚠️ uid=${uid} fetch empty (sequence vs uid range?), skip`); continue; }
 
           const parsed = await simpleParser(msg.source);
           const fromAddr = parsed.from?.value?.[0];
