@@ -180,80 +180,130 @@ async function pollInbox() {
   const client = new ImapFlow({
     host: 'imap.gmail.com', port: 993, secure: true,
     auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD },
-    logger: false
+    logger: false,
+    // 防 ETIMEOUT crash：縮短 timeout，這次連不上就放掉、下次再來
+    socketTimeout: 20_000,
+    greetingTimeout: 10_000
   });
+  // 抓 imapflow 內部 'error' event，避免 EventEmitter throw 整個 process crash
+  client.on('error', err => log('inbox', `⚠️ imap client error (ignored, will retry next poll): ${err.message}`));
 
   try {
     await client.connect();
     const lock = await client.getMailboxLock('INBOX');
     try {
-      let fetched = 0;
-      for await (const msg of client.fetch({ seen: false }, { source: true, envelope: true, uid: true })) {
-        if (fetched >= 10) break;
-        if (lastSeenUids.has(msg.uid)) continue;
+      // ⚠️ 核心修法：imapflow client.fetch({ seen: false }) 把 {seen:false} 當 sequence range
+      //  (從 uid 1 開始抓最舊那封，永遠卡 personal 信)。
+      //  正解：先 client.search() 過濾 — 只抓「未讀 + subject 含 詢價/RFQ/Quote」
+      //  完全不碰 personal 信、不再從 2019 那封 darlingsquare 開始。
+      const uids = await client.search({
+        seen: false,
+        or: [
+          { subject: '詢價' },
+          { subject: 'RFQ' },
+          { subject: 'rfq' },
+          { subject: 'Quote Request' },
+          { subject: 'Inquiry' }
+        ]
+      }, { uid: true });
 
-        const parsed = await simpleParser(msg.source);
-        const fromAddr = parsed.from?.value?.[0];
-        const fromEmail = (fromAddr?.address || '').toLowerCase();
-        const fromName = fromAddr?.name || '';
-        const subject = parsed.subject || '';
+      if (!uids || uids.length === 0) {
+        log('inbox', 'no unseen 詢價/RFQ/Quote mail this poll');
+      } else {
+        // uid 越大越新，取最新 10 封
+        const targetUids = uids.slice(-10);
+        log('inbox', `search hit ${uids.length} 詢價 unseen, processing latest ${targetUids.length}`);
 
-        // 附件處理 — 寫到 sandbox 內 data/incoming/
-        const sandboxIncoming = `/sandbox/.openclaw/workspace/data/incoming`;
-        const atts = [];
-        for (const att of (parsed.attachments || [])) {
-          const safeName = (att.filename || `att-${Date.now()}.bin`).replace(/[^\w.\-]/g, '_');
-          const b64 = att.content.toString('base64');
-          // chunked write (base64 too long for one cmd if big)
+        for (const uid of targetUids) {
+          if (lastSeenUids.has(uid)) continue;
+          let msg;
           try {
-            // 寫個小 attachment 直接 base64 -d
-            if (b64.length < 500000) {  // < ~370KB raw
-              await nexec(`nemoclaw ${SANDBOX} exec -- bash -c "mkdir -p ${sandboxIncoming} && echo ${b64} | base64 -d > ${sandboxIncoming}/${safeName}"`, 20000);
-            } else {
-              log('inbox', `⚠️ attachment ${safeName} too large (${b64.length} b64 chars), skipping write`);
-              continue;
-            }
-            atts.push({
-              filename: safeName,
-              content_type: att.contentType,
-              saved_path: `${sandboxIncoming}/${safeName}`,
-              size_bytes: att.content.length
-            });
+            msg = await client.fetchOne(uid, { source: true, envelope: true, uid: true });
           } catch (e) {
-            log('inbox', `❌ attachment write failed: ${e.message}`);
+            log('inbox', `⚠️ fetchOne uid=${uid} failed: ${e.message}`);
+            continue;
           }
+          if (!msg || !msg.source) { log('inbox', `⚠️ uid=${uid} fetch empty, skip`); continue; }
+
+          const parsed = await simpleParser(msg.source);
+          const fromAddr = parsed.from?.value?.[0];
+          const fromEmail = (fromAddr?.address || '').toLowerCase();
+          const fromName = fromAddr?.name || '';
+          const subject = parsed.subject || '';
+
+          // 附件處理 — 寫到 sandbox 內 data/incoming/
+          const sandboxIncoming = `/sandbox/.openclaw/workspace/data/incoming`;
+          const atts = [];
+          for (const att of (parsed.attachments || [])) {
+            const safeName = (att.filename || `att-${Date.now()}.bin`).replace(/[^\w.\-]/g, '_');
+            const b64 = att.content.toString('base64');
+            try {
+              if (b64.length < 500000) {
+                await nexec(`nemoclaw ${SANDBOX} exec -- bash -c "mkdir -p ${sandboxIncoming} && echo ${b64} | base64 -d > ${sandboxIncoming}/${safeName}"`, 20000);
+              } else {
+                log('inbox', `⚠️ attachment ${safeName} too large (${b64.length} b64 chars), skipping write`);
+                continue;
+              }
+              atts.push({
+                filename: safeName,
+                content_type: att.contentType,
+                saved_path: `${sandboxIncoming}/${safeName}`,
+                size_bytes: att.content.length
+              });
+            } catch (e) {
+              log('inbox', `❌ attachment write failed: ${e.message}`);
+            }
+          }
+
+          const inboxJson = {
+            uid: uid,
+            from: fromName ? `${fromName} <${fromEmail}>` : fromEmail,
+            from_email: fromEmail,
+            subject,
+            received_at: parsed.date?.toISOString() || null,
+            body_text_preview: (parsed.text || '').slice(0, 300).replace(/\s+/g, ' ').trim(),
+            attachments: atts,
+            fetched_by_bridge_at: new Date().toISOString()
+          };
+          const jb64 = Buffer.from(JSON.stringify(inboxJson, null, 2), 'utf8').toString('base64');
+          await nexec(`nemoclaw ${SANDBOX} exec -- bash -c "mkdir -p ${SANDBOX_INBOX} && echo ${jb64} | base64 -d > ${SANDBOX_INBOX}/${uid}.json"`, 10000);
+          log('inbox', `✓ wrote uid=${uid} from=${fromEmail} subject="${subject.slice(0, 40)}" attachments=${atts.length}`);
+
+          // mark seen with retry (3 attempts)
+          let markedSeen = false;
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              await client.messageFlagsAdd({ uid: uid }, ['\\Seen'], { uid: true });
+              markedSeen = true;
+              break;
+            } catch (e) {
+              log('inbox', `mark seen attempt ${attempt}/3 failed uid=${uid}: ${e.message}`);
+              await new Promise(r => setTimeout(r, 500 * attempt));
+            }
+          }
+          if (!markedSeen) {
+            log('inbox', `⚠️ giving up mark seen uid=${uid} — will skip via lastSeenUids dedup`);
+          }
+          lastSeenUids.add(uid);
         }
-
-        const inboxJson = {
-          uid: msg.uid,
-          from: fromName ? `${fromName} <${fromEmail}>` : fromEmail,
-          from_email: fromEmail,
-          subject,
-          received_at: parsed.date?.toISOString() || null,
-          body_text_preview: (parsed.text || '').slice(0, 300).replace(/\s+/g, ' ').trim(),
-          attachments: atts,
-          fetched_by_bridge_at: new Date().toISOString()
-        };
-
-        const b64 = Buffer.from(JSON.stringify(inboxJson, null, 2), 'utf8').toString('base64');
-        await nexec(`nemoclaw ${SANDBOX} exec -- bash -c "mkdir -p ${SANDBOX_INBOX} && echo ${b64} | base64 -d > ${SANDBOX_INBOX}/${msg.uid}.json"`, 10000);
-
-        log('inbox', `✓ wrote uid=${msg.uid} from=${fromEmail} subject="${subject.slice(0, 40)}" attachments=${atts.length}`);
-
-        // mark seen
-        await client.messageFlagsAdd({ uid: msg.uid }, ['\\Seen'], { uid: true });
-        lastSeenUids.add(msg.uid);
-        fetched++;
       }
     } finally {
-      lock.release();
+      try { lock.release(); } catch {}
     }
-    await client.logout();
+    try { await client.logout(); } catch {}
   } catch (e) {
-    log('inbox', `IMAP error: ${e.message}`);
+    log('inbox', `IMAP error swallowed (will retry next poll): ${e.message}`);
     try { await client.close(); } catch {}
   }
 }
+
+// 全局 unhandled rejection 兜底（imapflow 偶爾 async 拋 error 在 microtask 內）
+process.on('unhandledRejection', (err) => {
+  log('global', `unhandledRejection swallowed: ${err && err.message || err}`);
+});
+process.on('uncaughtException', (err) => {
+  log('global', `uncaughtException swallowed: ${err && err.message || err}`);
+});
 
 // ───────────────────────────────────────────────────────
 // 主迴圈
