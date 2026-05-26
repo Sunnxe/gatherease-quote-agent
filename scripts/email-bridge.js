@@ -196,14 +196,16 @@ async function pollInbox() {
       //  (從 uid 1 開始抓最舊那封，永遠卡 personal 信)。
       //  正解：先 client.search() 過濾 — 只抓「未讀 + subject 含 詢價/RFQ/Quote」
       //  完全不碰 personal 信、不再從 2019 那封 darlingsquare 開始。
+      // ⚠️ 用「具體 phrase」不要太寬的單字 (Inquiry 會中 EDM/marketing 信)
       const uids = await client.search({
         seen: false,
         or: [
-          { subject: '詢價' },
-          { subject: 'RFQ' },
+          { subject: '詢價' },              // 中文確定詢價詞
+          { subject: 'RFQ' },               // 製造業 acronym
           { subject: 'rfq' },
-          { subject: 'Quote Request' },
-          { subject: 'Inquiry' }
+          { subject: 'Quote Request' },     // 完整 phrase
+          { subject: 'Request for Quote' },
+          { subject: 'Request for Quotation' }
         ]
       }, { uid: true });
 
@@ -237,26 +239,45 @@ async function pollInbox() {
           const subject = parsed.subject || '';
 
           // 附件處理 — 寫到 sandbox 內 data/incoming/
+          // grpc args 比 bash ARG_MAX 更嚴；大檔用 stdin pipe 餵 base64
           const sandboxIncoming = `/sandbox/.openclaw/workspace/data/incoming`;
           const atts = [];
           for (const att of (parsed.attachments || [])) {
             const safeName = (att.filename || `att-${Date.now()}.bin`).replace(/[^\w.\-]/g, '_');
             const b64 = att.content.toString('base64');
+            const rawBytes = att.content.length;
             try {
-              if (b64.length < 500000) {
+              if (b64.length < 80000) {
+                // 小檔 — inline echo 安全
                 await nexec(`nemoclaw ${SANDBOX} exec -- bash -c "mkdir -p ${sandboxIncoming} && echo ${b64} | base64 -d > ${sandboxIncoming}/${safeName}"`, 20000);
+              } else if (rawBytes < 5_000_000) {
+                // 中大檔 — 走 stdin pipe (用 spawn 餵 b64 進 stdin)
+                await new Promise((resolve, reject) => {
+                  const { spawn } = require('child_process');
+                  const proc = spawn('nemoclaw', [SANDBOX, 'exec', '--', 'bash', '-c',
+                    `mkdir -p ${sandboxIncoming} && base64 -d > ${sandboxIncoming}/${safeName}`]);
+                  let stderr = '';
+                  proc.stderr.on('data', d => { stderr += d; });
+                  proc.on('error', reject);
+                  proc.on('close', code => {
+                    if (code === 0) resolve();
+                    else reject(new Error(`stdin pipe failed: code ${code}, stderr=${stderr}`));
+                  });
+                  proc.stdin.write(b64);
+                  proc.stdin.end();
+                });
               } else {
-                log('inbox', `⚠️ attachment ${safeName} too large (${b64.length} b64 chars), skipping write`);
+                log('inbox', `⚠️ attachment ${safeName} >5MB (${rawBytes} bytes), skipping`);
                 continue;
               }
               atts.push({
                 filename: safeName,
                 content_type: att.contentType,
                 saved_path: `${sandboxIncoming}/${safeName}`,
-                size_bytes: att.content.length
+                size_bytes: rawBytes
               });
             } catch (e) {
-              log('inbox', `❌ attachment write failed: ${e.message}`);
+              log('inbox', `❌ attachment write failed (${safeName}, ${rawBytes}B): ${e.message}`);
             }
           }
 
