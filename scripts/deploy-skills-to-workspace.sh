@@ -82,9 +82,15 @@ for md in AGENTS.md SOUL.md IDENTITY.md USER.md TOOLS.md; do
 done
 
 if [ -f .env ]; then
-  B64=$(base64 -w0 .env 2>/dev/null || base64 .env | tr -d '\n')
-  echo "  → $SANDBOX_WS/.env (chmod 600)"
+  # 永遠把 BRIDGE_MODE=outbox 加進去（host .env 沒這行，但 sandbox 一定要）
+  # 用 path-based detection 已經是主要手段，這個是雙保險
+  TMP_ENV=$(mktemp)
+  grep -v '^BRIDGE_MODE=' .env > "$TMP_ENV"
+  echo "BRIDGE_MODE=outbox" >> "$TMP_ENV"
+  B64=$(base64 -w0 "$TMP_ENV" 2>/dev/null || base64 "$TMP_ENV" | tr -d '\n')
+  echo "  → $SANDBOX_WS/.env (chmod 600, + BRIDGE_MODE=outbox 注入)"
   nemoclaw "$SANDBOX" exec -- bash -c "echo '$B64' | base64 -d > '$SANDBOX_WS/.env' && chmod 600 '$SANDBOX_WS/.env'"
+  rm -f "$TMP_ENV"
 fi
 
 echo ""

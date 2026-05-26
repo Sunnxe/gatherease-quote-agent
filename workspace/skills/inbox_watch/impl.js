@@ -148,15 +148,20 @@ async function extractPdfText(buf) {
   }
 }
 
-// ─── BRIDGE_MODE detection (fallback if cli.sh source .env 失敗) ──
+// ─── BRIDGE_MODE detection — 偵測 sandbox 路徑最穩 ──
+// 不依賴 .env（會被 deploy 覆蓋）也不依賴 cli.sh source（過去 export 不穩）
 function detectBridgeMode() {
-  if (process.env.BRIDGE_MODE) return process.env.BRIDGE_MODE;
+  if (process.env.BRIDGE_MODE) {
+    return String(process.env.BRIDGE_MODE).trim().replace(/\r$/, '');
+  }
+  if (__dirname.startsWith('/sandbox/')) return 'outbox';
   try {
     const envPath = path.resolve(__dirname, '..', '..', '.env');
     const envContent = fsSync.readFileSync(envPath, 'utf8');
     const m = envContent.match(/^BRIDGE_MODE=(.*)$/m);
-    return m ? m[1].trim().replace(/^["']|["']$/g, '') : null;
-  } catch { return null; }
+    if (m) return m[1].trim().replace(/^["']|["']$/g, '').replace(/\r$/, '');
+  } catch {}
+  return null;
 }
 
 // ─── BRIDGE_MODE inbox reader ──────────────────────────

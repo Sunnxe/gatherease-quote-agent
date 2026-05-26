@@ -269,14 +269,22 @@ function smtpSend({ host, port, username, password, from, to, mime, log }) {
 // FALLBACK: 不依賴 cli.sh source .env 把 BRIDGE_MODE export，
 // impl.js 自己讀 workspace/.env 兜底（cli.sh source 失敗 sandbox 還是 OK）
 function detectBridgeMode() {
-  if (process.env.BRIDGE_MODE) return process.env.BRIDGE_MODE;
+  // 優先 env var (host 端跑 e2e test 可 inline 強制)
+  if (process.env.BRIDGE_MODE) {
+    return String(process.env.BRIDGE_MODE).trim().replace(/\r$/, '');
+  }
+  // 主要偵測: sandbox 內路徑永遠是 /sandbox/...，host 永遠是 /home/...
+  // 比 .env source 穩，不會被 deploy 覆蓋。
+  if (__dirname.startsWith('/sandbox/')) return 'outbox';
+  // .env 兜底（極端情況：sandbox 路徑變了 + 有人手動 set .env）
   try {
     const path = require('path');
     const envPath = path.resolve(__dirname, '..', '..', '.env');
     const envContent = fs.readFileSync(envPath, 'utf8');
     const m = envContent.match(/^BRIDGE_MODE=(.*)$/m);
-    return m ? m[1].trim().replace(/^["']|["']$/g, '') : null;
-  } catch { return null; }
+    if (m) return m[1].trim().replace(/^["']|["']$/g, '').replace(/\r$/, '');
+  } catch {}
+  return null;
 }
 
 async function writeOutbox(input) {
