@@ -20,7 +20,10 @@ if [ ! -d "$SKILL_DIR/node_modules/pdf-to-png-converter" ]; then
   if [ ! -f "$SKILL_DIR/package.json" ]; then
     echo '{"name":"read-drawing-deps","version":"0.0.0","private":true}' > "$SKILL_DIR/package.json"
   fi
-  ( cd "$SKILL_DIR" && npm install --no-audit --no-fund --omit=optional pdf-to-png-converter 2>&1 | tail -8 ) >&2
+  # ⚠️ 不能加 --omit=optional！@napi-rs/canvas 的 platform-specific
+  # prebuilt binary 是 optional dependency（每個 OS/arch 一個），少了
+  # 就 "Cannot find native binding" (npm bug #4828)
+  ( cd "$SKILL_DIR" && npm install --no-audit --no-fund pdf-to-png-converter 2>&1 | tail -8 ) >&2
   if [ -d "$SKILL_DIR/node_modules/pdf-to-png-converter" ]; then
     echo "[read_drawing] ✓ pdf-to-png-converter installed" >&2
   else
