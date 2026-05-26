@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>報價單 {{order_id}} — GatherRoller</title>
+<style>
+  body {
+    font-family: -apple-system, "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", "微軟正黑體", sans-serif;
+    max-width: 760px;
+    margin: 40px auto;
+    padding: 0 24px 60px;
+    color: #1a1a1a;
+    line-height: 1.6;
+  }
+  header {
+    border-bottom: 3px solid #76b900;
+    padding-bottom: 18px;
+    margin-bottom: 28px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+  header .brand h1 {
+    margin: 0;
+    font-size: 30px;
+    letter-spacing: 4px;
+  }
+  header .brand .subtitle {
+    color: #666;
+    font-size: 13px;
+    margin-top: 6px;
+  }
+  header .company {
+    text-align: right;
+    font-size: 12px;
+    color: #888;
+    line-height: 1.6;
+  }
+  header .company strong {
+    color: #76b900;
+    font-size: 14px;
+  }
+  .meta {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: 8px 16px;
+    background: #fafafa;
+    border-left: 4px solid #76b900;
+    padding: 16px 20px;
+    margin-bottom: 28px;
+    font-size: 14px;
+  }
+  .meta dt {
+    color: #666;
+    margin: 0;
+  }
+  .meta dd {
+    margin: 0;
+    color: #1a1a1a;
+    font-weight: 500;
+  }
+  h2 {
+    font-size: 16px;
+    color: #76b900;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 8px;
+    margin: 28px 0 16px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 20px;
+  }
+  th, td {
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+    font-size: 14px;
+  }
+  th {
+    background: #f4f7f0;
+    color: #555;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.5px;
+  }
+  td.label {
+    color: #666;
+    width: 30%;
+  }
+  tr.total td {
+    background: rgba(118,185,0,0.08);
+    color: #76b900;
+    font-weight: 700;
+    font-size: 18px;
+    border-bottom: 2px solid #76b900;
+  }
+  .terms {
+    background: #fafafa;
+    padding: 16px 20px;
+    border-radius: 4px;
+    font-size: 13px;
+    color: #444;
+    white-space: pre-wrap;
+  }
+  .signature {
+    margin-top: 32px;
+    padding-top: 20px;
+    border-top: 1px dashed #ccc;
+    font-size: 14px;
+  }
+  .signature .approved {
+    color: #76b900;
+    font-weight: 700;
+    font-size: 16px;
+  }
+  footer {
+    margin-top: 50px;
+    padding-top: 24px;
+    border-top: 1px solid #eee;
+    text-align: center;
+    font-size: 11px;
+    color: #999;
+    line-height: 1.8;
+  }
+  footer .brand {
+    color: #76b900;
+    font-weight: 700;
+    font-size: 12px;
+  }
+  @media print {
+    body { margin: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1>報 價 單</h1>
+    <div class="subtitle">QUOTATION · Rubber Roller Specialist Since 1989</div>
+  </div>
+  <div class="company">
+    <strong>GatherRoller 桐聚科技</strong><br>
+    台中市烏日區<br>
+    s778906@gmail.com
+  </div>
+</header>
+
+<dl class="meta">
+  <dt>單號</dt><dd>{{order_id}}</dd>
+  <dt>日期</dt><dd>{{date}}</dd>
+  <dt>客戶</dt><dd>{{customer_name}}</dd>
+  <dt>聯絡 Email</dt><dd>{{customer_email}}</dd>
+</dl>
+
+<h2>報價明細</h2>
+<table>
+  <thead>
+    <tr><th>項目</th><th>內容</th></tr>
+  </thead>
+  <tbody>
+    <tr><td class="label">產品</td><td>{{product_name}}</td></tr>
+    <tr><td class="label">數量</td><td>{{qty}} 隻</td></tr>
+    <tr><td class="label">單價</td><td>NT$ {{unit_price_fmt}} / 隻</td></tr>
+    <tr class="total"><td>總金額</td><td>NT$ {{total_fmt}}</td></tr>
+    <tr><td class="label">交期</td><td>{{lead_days}} 個工作天（自客戶確認訂單起算）</td></tr>
+    <tr><td class="label">表面處理供應商</td><td>{{supplier_choice}}</td></tr>
+  </tbody>
+</table>
+
+<h2>付款條件</h2>
+<div class="terms">{{terms}}</div>
+
+<div class="signature">
+  <p><strong>簽核人：</strong><span class="approved">{{signed_by}}</span></p>
+  <p><strong>簽核時間：</strong>{{signed_at}}</p>
+</div>
+
+<footer>
+  本報價單由 <strong>GatherEase AI assistant</strong> 自動生成<br>
+  Powered by NVIDIA Nemotron Super 120B + NemoClaw kernel-level governance · all actions audit-logged<br>
+  <span class="brand">GatherEase · 流程交給 AI，決策留給老闆</span>
+</footer>
+
+</body>
+</html>
