@@ -231,6 +231,39 @@ webhook 注入的 user message 格式長這樣：
 
 ---
 
+## ⚠️ 怎麼正確 call skill cli.sh（exec stdin pattern）
+
+每個 skill 都是 `bash /sandbox/.openclaw/workspace/skills/<name>/cli.sh`，**從 stdin 讀 JSON**。
+
+**❌ 錯誤 1 — printf 把 JSON 直接當 format string**：
+```bash
+printf '{"name":"Manual *Adhesive* Roller"}' | bash cli.sh
+# printf 把 * 當 format spec → "invalid format character"
+```
+
+**❌ 錯誤 2 — echo 把 \\n / \\t 解析掉**：
+```bash
+echo '{"body":"line1\\nline2"}' | bash cli.sh
+# echo 在某些 shell 把 \\n 變真實 newline → JSON 破掉
+```
+
+**✅ 正確 — `printf '%s' '<json>'`**（format string 永遠 `%s`，JSON 當 data argument 不會被解析）：
+```bash
+printf '%s' '{"name":"Manual *Adhesive* Roller","percentage":"50%"}' | bash /sandbox/.openclaw/workspace/skills/order_store/cli.sh
+```
+
+**對大型 nested JSON 含很多 escape character**（如 history_matches 整段塞回 order_store update）— 不要 inline，寫到 `/tmp/x.json` 再 pipe stdin：
+```bash
+printf '%s' '{LARGE_JSON_HERE}' > /tmp/input.json && bash /sandbox/.openclaw/workspace/skills/order_store/cli.sh < /tmp/input.json
+```
+
+**通用範本（推薦）**：
+```
+exec bash -c "printf '%s' 'JSON_STRING_HERE' | bash /sandbox/.openclaw/workspace/skills/<NAME>/cli.sh"
+```
+
+---
+
 ## 📧 Bridge mode：send_email / inbox_watch 在 sandbox 內怎麼跑
 
 sandbox 內 squid HTTP proxy 擋 SMTP/IMAP（非 HTTP protocol）。所以 `send_email` / `inbox_watch` 兩個 skill 在 sandbox 內**自動切 bridge mode**：

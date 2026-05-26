@@ -26,6 +26,14 @@ npm install --no-audit --no-fund pdf-parse@1.1.1 2>&1 | tail -5
 echo "✓ installed at $(pwd)/node_modules/"
 ls -d node_modules/imapflow node_modules/mailparser 2>&1
 
+hr "2a) read_drawing deps (pdf-to-png-converter) → host"
+cd "$REPO_ROOT/workspace/skills/read_drawing"
+if [ ! -f package.json ]; then
+  echo '{"name":"read_drawing","version":"1.0.0","private":true}' > package.json
+fi
+npm install --no-audit --no-fund pdf-to-png-converter 2>&1 | tail -5
+ls -d node_modules/pdf-to-png-converter 2>&1
+
 hr "2) line_notify deps (@line/bot-sdk + express) → host"
 cd "$REPO_ROOT/skills/line_notify" 2>/dev/null || cd "$REPO_ROOT/workspace/skills/line_notify"
 if [ ! -f package.json ]; then

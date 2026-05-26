@@ -2,7 +2,7 @@
 /**
  * skills/read_drawing/impl.js (OpenClaw skill version — VISION upgrade)
  *
- * PDF → PNG (pdftoppm 第一頁 150 dpi)
+ * PDF → PNG (pdf-to-png-converter 純 JS，第一頁 viewportScale 1.5 ≈ 150 dpi)
  *     → base64
  *     → Nemotron Vision (meta/llama-3.2-90b-vision-instruct via NVIDIA NIM)
  *     → 嚴格 JSON output
@@ -10,16 +10,17 @@
  * Fallback：vision 不可達 → 文字推理 mock (knowledge.txt + customer name)
  *
  * NemoClaw egress preset 允許 integrate.api.nvidia.com (NVIDIA NIM API)。
+ *
+ * 注意：用 npm pdf-to-png-converter 取代 pdftoppm，避開 sandbox 沒
+ * poppler-utils 的問題（sandbox apt-get 預期被治理擋）。
+ * pdf-to-png-converter 內部用 pdfjs-dist + @napi-rs/canvas (prebuilt binary
+ * 不需要 cairo/libpng 等 system library)。
  */
 
 const fs = require('fs/promises');
 const fsSync = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const os = require('os');
-const { exec } = require('child_process');
-const { promisify } = require('util');
-const execp = promisify(exec);
 
 const SKILL_DIR = __dirname;
 const KNOWLEDGE_PATH = path.join(SKILL_DIR, 'knowledge.txt');
@@ -58,39 +59,36 @@ async function hashFile(filePath) {
   } catch { return 'unknown'; }
 }
 
-// ─── PDF → PNG (first page, 150 dpi) ───
-async function pdfFirstPageToPng(pdfPath) {
+// ─── PDF → PNG buffer (純 JS — pdf-to-png-converter) ───
+// 直接回 Buffer，不寫 tmp 檔（少一個 IO）
+async function pdfFirstPageToPngBuffer(pdfPath) {
   if (!fsSync.existsSync(pdfPath)) {
     throw new Error(`PDF not found: ${pdfPath}`);
   }
-  // try pdftoppm (poppler-utils)
+  let pdfToPng;
   try {
-    await execp('command -v pdftoppm');
-  } catch {
-    throw new Error('pdftoppm not in PATH — install poppler-utils in sandbox: sudo apt-get install -y poppler-utils');
+    ({ pdfToPng } = require('pdf-to-png-converter'));
+  } catch (e) {
+    throw new Error(`pdf-to-png-converter not installed: ${e.message} — cli.sh 應該 lazy install`);
   }
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'read_drawing_'));
-  const outPrefix = path.join(tmpDir, 'page');
-  await execp(`pdftoppm -r 150 -png -f 1 -l 1 "${pdfPath}" "${outPrefix}"`);
-  // pdftoppm 輸出 page-1.png 或 page-01.png (depending on version)
-  const candidates = ['page-1.png', 'page-01.png'];
-  for (const c of candidates) {
-    const p = path.join(tmpDir, c);
-    if (fsSync.existsSync(p)) return p;
+  // viewportScale 1.5 ≈ 150 dpi（NVIDIA Vision <180KB base64 限制下取平衡）
+  const pages = await pdfToPng(pdfPath, {
+    viewportScale: 1.5,
+    pagesToProcess: [1],
+    disableFontFace: true,
+    useSystemFonts: false
+  });
+  if (!pages || pages.length === 0 || !pages[0].content) {
+    throw new Error('pdf-to-png-converter returned no pages');
   }
-  // scan dir for any .png
-  const files = await fs.readdir(tmpDir);
-  const png = files.find(f => f.endsWith('.png'));
-  if (png) return path.join(tmpDir, png);
-  throw new Error(`pdftoppm ran but no PNG found in ${tmpDir}`);
+  return pages[0].content;  // Buffer
 }
 
 // ─── Nemotron Vision API ───
-async function callNemotronVision({ pngPath, customerName, drawingPdfPath }) {
+async function callNemotronVision({ pngBuf, customerName, drawingPdfPath }) {
   const apiKey = process.env.NVIDIA_API_KEY;
   if (!apiKey) throw new Error('NVIDIA_API_KEY env var not set');
 
-  const pngBuf = await fs.readFile(pngPath);
   const pngB64 = pngBuf.toString('base64');
   // NVIDIA NIM 對單 image 限制 ~180 KB base64 (LLama vision)
   if (pngB64.length > 180_000) {
@@ -240,9 +238,9 @@ async function main() {
 
   let result;
   try {
-    const pngPath = await pdfFirstPageToPng(drawing_pdf_path);
+    const pngBuf = await pdfFirstPageToPngBuffer(drawing_pdf_path);
     result = await callNemotronVision({
-      pngPath, customerName: customer_name, drawingPdfPath: drawing_pdf_path
+      pngBuf, customerName: customer_name, drawingPdfPath: drawing_pdf_path
     });
   } catch (err) {
     console.error(`[read_drawing] vision failed, fallback to mock: ${err.message}`);
