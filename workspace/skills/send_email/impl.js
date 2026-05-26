@@ -261,6 +261,30 @@ function smtpSend({ host, port, username, password, from, to, mime, log }) {
   });
 }
 
+// ─── BRIDGE_MODE outbox writer ──────────────────────────
+// sandbox 內 squid HTTP-proxy 擋 SMTP，所以 sandbox 跑時不直連，
+// 改成把 outbox JSON 寫到 workspace/data/outbox/，host 上 email-bridge.js
+// 監看、用 SMTP 真寄。
+async function writeOutbox(input) {
+  const path = require('path');
+  const SKILL_DIR = __dirname;
+  const WORKSPACE_DIR = path.resolve(SKILL_DIR, '..', '..');
+  const OUTBOX_DIR = path.join(WORKSPACE_DIR, 'data', 'outbox');
+  fs.mkdirSync(OUTBOX_DIR, { recursive: true });
+
+  const ts = Date.now();
+  const id = `out-${ts}-${Math.random().toString(36).slice(2, 8)}`;
+  const file = path.join(OUTBOX_DIR, `${id}.json`);
+  const payload = {
+    id,
+    queued_at: new Date().toISOString(),
+    status: 'pending',
+    request: input
+  };
+  fs.writeFileSync(file, JSON.stringify(payload, null, 2));
+  return { id, file };
+}
+
 // ─── main ───
 async function main() {
   const input = await readStdin();
@@ -270,6 +294,23 @@ async function main() {
   if (!subject) throw new Error('subject required');
   if (!body) throw new Error('body required');
 
+  // ── BRIDGE_MODE=outbox: 寫 JSON 給 host email-bridge.js 監看 ──
+  if (process.env.BRIDGE_MODE === 'outbox') {
+    const { id, file } = writeOutbox(input);
+    process.stdout.write(JSON.stringify({
+      status: 'queued',
+      bridge_mode: 'outbox',
+      outbox_id: id,
+      outbox_file: file,
+      to: Array.isArray(to) ? to : [to],
+      subject,
+      queued_at: new Date().toISOString(),
+      note: 'host email-bridge.js 監看 outbox，真寄成功會回填 sent_at/message_id 到此 JSON'
+    }));
+    return;
+  }
+
+  // ── 否則直連 SMTP（host 跑 / 本地測試 ok）──
   const username = process.env.GMAIL_USER;
   const password = process.env.GMAIL_APP_PASSWORD;
   if (!username) throw new Error('GMAIL_USER env var not set');

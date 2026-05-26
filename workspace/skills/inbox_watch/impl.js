@@ -148,7 +148,47 @@ async function extractPdfText(buf) {
   }
 }
 
-// ─── main IMAP poll ───
+// ─── BRIDGE_MODE inbox reader ──────────────────────────
+// sandbox 內 squid HTTP-proxy 擋 IMAP，所以 sandbox 跑時不直連 imap.gmail.com。
+// 改成讀 workspace/data/inbox/ 內 host email-bridge.js 已 IMAP poll 寫好的 JSON 檔。
+async function readInboxFiles({ mode, order_id, sender_contains, subject_contains, max_messages }) {
+  const INBOX_DIR = path.join(WORKSPACE_DIR, 'data', 'inbox');
+  try { await fs.access(INBOX_DIR); } catch { return []; }
+
+  const files = (await fs.readdir(INBOX_DIR))
+    .filter(f => f.endsWith('.json'))
+    .sort();   // 時序
+
+  const msgs = [];
+  for (const f of files) {
+    if (msgs.length >= max_messages) break;
+    let msg;
+    try { msg = JSON.parse(await fs.readFile(path.join(INBOX_DIR, f), 'utf8')); }
+    catch { continue; }
+
+    // 如果已標記 consumed 就 skip（不想每次都重抓）
+    if (msg.consumed_at) continue;
+
+    // mode filter（同直連邏輯）
+    const subject = msg.subject || '';
+    const fromEmail = (msg.from_email || '').toLowerCase();
+    if (mode === 'new_inquiry') {
+      const hasInquiryKw = /詢價|RFQ|Quote\s*Request|Inquiry/i.test(subject);
+      const hasPdf = (msg.attachments || []).some(a => /pdf/i.test(a.content_type || ''));
+      if (!(hasInquiryKw && hasPdf)) continue;
+    } else if (mode === 'supplier_reply') {
+      const isSup = /supplier-/i.test(fromEmail) || msg.matched_supplier;
+      if (!isSup) continue;
+    }
+    if (sender_contains && !fromEmail.includes(sender_contains.toLowerCase())) continue;
+    if (subject_contains && !subject.toLowerCase().includes(subject_contains.toLowerCase())) continue;
+
+    msgs.push({ ...msg, _inbox_file: f });
+  }
+  return msgs;
+}
+
+// ─── main ───
 async function main() {
   const input = await readStdin();
   const {
@@ -164,6 +204,33 @@ async function main() {
 
   if (action !== 'poll') throw new Error(`unknown action: ${action}. Only 'poll' supported.`);
 
+  // ── BRIDGE_MODE=outbox: 讀 host email-bridge 寫好的 inbox json ──
+  if (process.env.BRIDGE_MODE === 'outbox') {
+    const msgs = await readInboxFiles({ mode, order_id, sender_contains, subject_contains, max_messages });
+    // 標記 consumed
+    if (mark_seen) {
+      const INBOX_DIR = path.join(WORKSPACE_DIR, 'data', 'inbox');
+      for (const m of msgs) {
+        try {
+          const full = JSON.parse(await fs.readFile(path.join(INBOX_DIR, m._inbox_file), 'utf8'));
+          full.consumed_at = new Date().toISOString();
+          await fs.writeFile(path.join(INBOX_DIR, m._inbox_file), JSON.stringify(full, null, 2));
+        } catch {}
+      }
+    }
+    process.stdout.write(JSON.stringify({
+      status: 'ok',
+      bridge_mode: 'outbox',
+      mode,
+      order_id: order_id || null,
+      fetched_count: msgs.length,
+      messages: msgs.map(({ _inbox_file, ...rest }) => rest),
+      polled_at: new Date().toISOString()
+    }));
+    return;
+  }
+
+  // ── 否則直連 IMAP（host 跑）──
   const user = process.env.GMAIL_USER;
   const pass = process.env.GMAIL_APP_PASSWORD;
   if (!user || !pass) throw new Error('GMAIL_USER + GMAIL_APP_PASSWORD env vars not set');
