@@ -148,6 +148,17 @@ async function extractPdfText(buf) {
   }
 }
 
+// ─── BRIDGE_MODE detection (fallback if cli.sh source .env 失敗) ──
+function detectBridgeMode() {
+  if (process.env.BRIDGE_MODE) return process.env.BRIDGE_MODE;
+  try {
+    const envPath = path.resolve(__dirname, '..', '..', '.env');
+    const envContent = fsSync.readFileSync(envPath, 'utf8');
+    const m = envContent.match(/^BRIDGE_MODE=(.*)$/m);
+    return m ? m[1].trim().replace(/^["']|["']$/g, '') : null;
+  } catch { return null; }
+}
+
 // ─── BRIDGE_MODE inbox reader ──────────────────────────
 // sandbox 內 squid HTTP-proxy 擋 IMAP，所以 sandbox 跑時不直連 imap.gmail.com。
 // 改成讀 workspace/data/inbox/ 內 host email-bridge.js 已 IMAP poll 寫好的 JSON 檔。
@@ -205,7 +216,8 @@ async function main() {
   if (action !== 'poll') throw new Error(`unknown action: ${action}. Only 'poll' supported.`);
 
   // ── BRIDGE_MODE=outbox: 讀 host email-bridge 寫好的 inbox json ──
-  if (process.env.BRIDGE_MODE === 'outbox') {
+  const bridgeMode = detectBridgeMode();
+  if (bridgeMode === 'outbox') {
     const msgs = await readInboxFiles({ mode, order_id, sender_contains, subject_contains, max_messages });
     // 標記 consumed
     if (mark_seen) {

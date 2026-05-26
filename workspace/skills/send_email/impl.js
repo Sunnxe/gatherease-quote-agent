@@ -265,6 +265,20 @@ function smtpSend({ host, port, username, password, from, to, mime, log }) {
 // sandbox 內 squid HTTP-proxy 擋 SMTP，所以 sandbox 跑時不直連，
 // 改成把 outbox JSON 寫到 workspace/data/outbox/，host 上 email-bridge.js
 // 監看、用 SMTP 真寄。
+//
+// FALLBACK: 不依賴 cli.sh source .env 把 BRIDGE_MODE export，
+// impl.js 自己讀 workspace/.env 兜底（cli.sh source 失敗 sandbox 還是 OK）
+function detectBridgeMode() {
+  if (process.env.BRIDGE_MODE) return process.env.BRIDGE_MODE;
+  try {
+    const path = require('path');
+    const envPath = path.resolve(__dirname, '..', '..', '.env');
+    const envContent = fs.readFileSync(envPath, 'utf8');
+    const m = envContent.match(/^BRIDGE_MODE=(.*)$/m);
+    return m ? m[1].trim().replace(/^["']|["']$/g, '') : null;
+  } catch { return null; }
+}
+
 async function writeOutbox(input) {
   const path = require('path');
   const SKILL_DIR = __dirname;
@@ -295,7 +309,8 @@ async function main() {
   if (!body) throw new Error('body required');
 
   // ── BRIDGE_MODE=outbox: 寫 JSON 給 host email-bridge.js 監看 ──
-  if (process.env.BRIDGE_MODE === 'outbox') {
+  const bridgeMode = detectBridgeMode();
+  if (bridgeMode === 'outbox') {
     const { id, file } = writeOutbox(input);
     process.stdout.write(JSON.stringify({
       status: 'queued',
