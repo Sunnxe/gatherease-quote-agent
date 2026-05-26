@@ -400,6 +400,42 @@
   .sa-exec, .sa-tool{background:rgba(118,185,0,0.03);border-left:2px solid rgba(118,185,0,0.4)}
   .sa-empty{color:var(--muted);font-size:11px;text-align:center;padding:30px 10px;font-style:italic;
     font-family:'Noto Sans TC',sans-serif}
+
+  /* ---------- Agent Thinking (session transcript live) ---------- */
+  .at-panel{
+    background:linear-gradient(135deg, rgba(255,176,32,0.06) 0%, rgba(255,176,32,0.01) 100%);
+    border:1px solid rgba(255,176,32,0.28);
+    border-radius:14px;
+    overflow:hidden;
+  }
+  .at-panel .ph{
+    padding:10px 14px;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
+    border-bottom:1px solid rgba(255,176,32,0.18);
+    display:flex;align-items:center;justify-content:space-between;
+    color:#ffd273;
+  }
+  .at-list{padding:8px 10px;height:240px;overflow-y:auto;font-family:'JetBrains Mono',monospace}
+  .at-list::-webkit-scrollbar{width:5px}
+  .at-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+  .at-row{padding:8px 10px;border-radius:6px;font-size:11px;line-height:1.5;animation:slidein .3s ease;margin-bottom:5px}
+  .at-row .at-role{font-weight:700;font-size:10px;letter-spacing:.5px;text-transform:uppercase;
+    margin-bottom:3px;opacity:.85}
+  .at-row .at-text{color:var(--ink);font-family:'Noto Sans TC',sans-serif;font-size:11px;
+    white-space:pre-wrap;word-break:break-word}
+  .at-row .at-tool{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--nv-green-bright);font-weight:700}
+  .at-system{background:rgba(127,176,255,0.06);border-left:2px solid #7fb0ff}
+  .at-system .at-role{color:#7fb0ff}
+  .at-user{background:rgba(255,255,255,0.04);border-left:2px solid #888}
+  .at-user .at-role{color:#aab8a8}
+  .at-assistant{background:rgba(118,185,0,0.05);border-left:2px solid var(--nv-green)}
+  .at-assistant .at-role{color:var(--nv-green-bright)}
+  .at-tool-call, .at-tool-result, .at-tool-output{background:rgba(255,176,32,0.06);border-left:2px solid var(--hold)}
+  .at-tool-call .at-role, .at-tool-result .at-role, .at-tool-output .at-role{color:#ffd273}
+  .at-thinking{background:rgba(212,160,23,0.06);border-left:2px solid #e0b94a;font-style:italic}
+  .at-thinking .at-role{color:#e0b94a}
+  .at-empty{color:var(--muted);font-size:11px;text-align:center;padding:30px 10px;font-style:italic;
+    font-family:'Noto Sans TC',sans-serif}
+  .at-session-id{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -523,11 +559,22 @@
       <!-- Sandbox Activity · 真實 OpenClaw + NemoClaw log tail (agent 思考 / 治理事件) -->
       <div class="sa-panel">
         <div class="ph">
-          <span>🦞 Sandbox Activity · agent thinking + kernel governance</span>
+          <span>🦞 Sandbox Activity · kernel governance + inference</span>
           <span class="live"><span class="pulse"></span>live tail</span>
         </div>
         <div class="sa-list" id="sandboxActivity">
           <div class="sa-empty">等 sandbox 活動... (mirror server 每 10 秒抓 nemoclaw logs)</div>
+        </div>
+      </div>
+
+      <!-- Agent Thinking · 真實 session transcript (LLM 內部 user/assistant/tool turns) -->
+      <div class="at-panel">
+        <div class="ph">
+          <span>🧠 Agent Thinking · session transcript</span>
+          <span class="live"><span class="pulse"></span>poll 8s</span>
+        </div>
+        <div class="at-list" id="agentThinking">
+          <div class="at-empty">等 agent 跑起來... session 還沒建</div>
         </div>
       </div>
 
@@ -1266,6 +1313,57 @@ async function refreshSandboxActivity(){
 }
 refreshSandboxActivity();
 setInterval(refreshSandboxActivity, 8000);  // 8s polling, 比 status 頻繁因為 cache 10s
+
+// ─── Agent Thinking panel (real session transcript) ───
+function roleEmoji(role) {
+  const map = {
+    system: '⚙️',
+    user: '👤',
+    assistant: '🧠',
+    tool: '🔧',
+    'tool-call': '🔧',
+    'tool-result': '📊',
+    'tool-output': '📊',
+    thinking: '💭'
+  };
+  return map[role] || '·';
+}
+function roleClass(role) {
+  if (role === 'system') return 'at-system';
+  if (role === 'user') return 'at-user';
+  if (role === 'assistant') return 'at-assistant';
+  if (role.startsWith('tool')) return 'at-tool-call';
+  if (role === 'thinking') return 'at-thinking';
+  return 'at-user';
+}
+async function refreshAgentThinking(){
+  try {
+    const r = await fetch('/api/agent-session');
+    if (!r.ok) return;
+    const data = await r.json();
+    const el = document.getElementById('agentThinking');
+    if (!el) return;
+    if (!data.events || data.events.length === 0) {
+      const note = data.note || '等 agent 跑起來...';
+      el.innerHTML = `<div class="at-empty">${note}</div>`;
+      return;
+    }
+    el.innerHTML = data.events.map(e => {
+      const emoji = roleEmoji(e.role);
+      const cls = roleClass(e.role);
+      const toolBadge = e.tool_name ? `<span class="at-tool">→ ${e.tool_name}</span>` : '';
+      const safeText = (e.text || '')
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      return `<div class="at-row ${cls}">
+        <div class="at-role">${emoji} ${e.role.toUpperCase()} ${toolBadge}</div>
+        <div class="at-text">${safeText}</div>
+      </div>`;
+    }).join('');
+    el.scrollTop = el.scrollHeight;
+  } catch (e) { /* silent */ }
+}
+refreshAgentThinking();
+setInterval(refreshAgentThinking, 8000);
 </script>
 </body>
 </html>

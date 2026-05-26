@@ -248,6 +248,68 @@ app.get('/api/sandbox-activity', async (req, res) => {
   }
 });
 
+// ─── /api/agent-session (最新 session jsonl transcript) ─
+app.get('/api/agent-session', async (req, res) => {
+  try {
+    const result = await cached('agent-session', async () => {
+      // 找最新 session file
+      const listOut = await execAsync(
+        `nemoclaw ${SANDBOX} exec -- bash -c 'ls -t /sandbox/.openclaw/agents/main/sessions/*.jsonl 2>/dev/null | head -1'`,
+        10000
+      );
+      const sessionFile = listOut.trim();
+      if (!sessionFile || !sessionFile.endsWith('.jsonl')) {
+        return { sessionFile: null, events: [], note: 'no session jsonl yet' };
+      }
+
+      // Tail 最新 N 行
+      const content = await execAsync(
+        `nemoclaw ${SANDBOX} exec -- tail -80 "${sessionFile}"`,
+        10000
+      );
+
+      const events = [];
+      for (const line of content.split('\n')) {
+        if (!line.trim()) continue;
+        try {
+          const obj = JSON.parse(line);
+          // 抽出有用 fields
+          const role = obj.role || obj.type || obj.kind || 'unknown';
+          let text = '';
+          if (typeof obj.content === 'string') text = obj.content;
+          else if (Array.isArray(obj.content)) {
+            text = obj.content.map(c => c.text || c.content || JSON.stringify(c).slice(0,200)).join(' ');
+          } else if (obj.content && typeof obj.content === 'object') {
+            text = JSON.stringify(obj.content).slice(0, 500);
+          } else if (obj.message) text = obj.message;
+          else text = JSON.stringify(obj).slice(0, 300);
+
+          events.push({
+            role,
+            tool_name: obj.tool_name || obj.name || null,
+            text: text.slice(0, 600),  // truncate long content
+            ts: obj.ts || obj.timestamp || obj.createdAt || null
+          });
+        } catch {
+          // 非 JSON line, skip
+        }
+      }
+
+      const sessionId = sessionFile.split('/').pop().replace('.jsonl', '');
+      return {
+        sessionFile,
+        sessionId,
+        events: events.slice(-30),  // 顯示最後 30 turns
+        total: events.length
+      };
+    }, 8000);
+
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message, stderr: e.stderr });
+  }
+});
+
 // ─── /api/audit?n=50 ────────────────────────────────────
 app.get('/api/audit', async (req, res) => {
   const n = Math.min(parseInt(req.query.n || '50', 10), 500);
