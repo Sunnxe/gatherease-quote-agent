@@ -7,7 +7,8 @@ metadata:
     os: [linux]
     requires:
       bins: [node, bash, pdftoppm]
-      env: [NVIDIA_API_KEY]
+    # NVIDIA_API_KEY 由 cli.sh 從 workspace/.env source 進 process，不寫進 requires.env
+    # (OpenClaw 檢查 requires.env 看的是 sandbox process env, 不是 workspace .env)
 ---
 
 # read_drawing — 工程圖視覺判讀 skill

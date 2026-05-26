@@ -7,7 +7,7 @@ metadata:
     os: [linux]
     requires:
       bins: [node, bash]
-      env: [GMAIL_USER, GMAIL_APP_PASSWORD]
+    # GMAIL_USER + GMAIL_APP_PASSWORD 由 cli.sh 從 workspace/.env source
 ---
 
 # send_email — Gmail SMTP 真發信 skill

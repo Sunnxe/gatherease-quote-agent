@@ -76,16 +76,27 @@ echo "  ✓ .env uploaded (chmod 600)"
 echo ""
 
 # ─── Step 4: verify ────────────────────────────────────────
-echo "▶ Verifying 6 skills loaded in sandbox..."
-LOADED=$(nemoclaw "$SANDBOX" exec -- openclaw skills list 2>&1 | grep -Eo "(read_drawing|get_history_quote|calc_cost|compare_suppliers|line_notify|send_email)" | sort -u || true)
+EXPECTED_COUNT=${#SKILLS[@]}
+echo "▶ Verifying $EXPECTED_COUNT skills loaded in sandbox..."
+
+# 從 SKILLS array 動態組 regex，避免寫死 skill 名字
+SKILLS_RE=$(IFS='|'; echo "${SKILLS[*]}")
+LOADED=$(nemoclaw "$SANDBOX" exec -- openclaw skills list 2>&1 | grep -Eo "($SKILLS_RE)" | sort -u || true)
 COUNT=$(echo "$LOADED" | grep -cv '^$' || true)
-echo "  Found: $LOADED"
-echo "  Total: $COUNT / 6"
+
+echo "  Expected: ${SKILLS[*]}"
+echo "  Found:    $(echo $LOADED)"
+echo "  Total:    $COUNT / $EXPECTED_COUNT"
 echo ""
 
-if [ "$COUNT" -lt 6 ]; then
-  echo "⚠️  少於 6 個 skill loaded。可能要重啟 gateway："
-  echo "    nemoclaw $SANDBOX exec -- openclaw gateway restart"
+if [ "$COUNT" -lt "$EXPECTED_COUNT" ]; then
+  MISSING=""
+  for s in "${SKILLS[@]}"; do
+    echo "$LOADED" | grep -q "^$s$" || MISSING="$MISSING $s"
+  done
+  echo "⚠️  少 $((EXPECTED_COUNT - COUNT)) 個。Missing:$MISSING"
+  echo "    重啟 gateway 看看 (skill 改後可能要 reload):"
+  echo "      nemoclaw $SANDBOX exec -- openclaw gateway restart"
   echo ""
 fi
 

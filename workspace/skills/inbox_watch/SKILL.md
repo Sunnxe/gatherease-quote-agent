@@ -7,7 +7,7 @@ metadata:
     os: [linux]
     requires:
       bins: [node, bash]
-      env: [GMAIL_USER, GMAIL_APP_PASSWORD]
+    # GMAIL_USER + GMAIL_APP_PASSWORD 由 cli.sh 從 workspace/.env source
 ---
 
 # inbox_watch — IMAP 收信 + PDF 解析 skill

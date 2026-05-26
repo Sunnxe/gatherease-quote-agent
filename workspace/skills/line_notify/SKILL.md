@@ -7,7 +7,7 @@ metadata:
     os: [linux]
     requires:
       bins: [node, bash, curl]
-      env: [LINE_CHANNEL_ACCESS_TOKEN, LINE_BOSS_USER_ID]
+    # LINE_CHANNEL_ACCESS_TOKEN + LINE_BOSS_USER_ID 由 cli.sh 從 workspace/.env source
 ---
 
 # line_notify — 推 LINE flex 給廖老闆 + 等回覆 skill
