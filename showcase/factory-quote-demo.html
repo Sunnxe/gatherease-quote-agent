@@ -1976,20 +1976,38 @@ function renderSysScene(order) {
 }
 
 // 5 步驟橫向時間軸 — 同步顯示 agent 進度
-const STAGE_TO_MACRO = [0, 1, 1, 1, 2, 4];   // inbox→0, engineer/history/planner→1, supplier→2, sys→4
-const SIGNOFF_STATUSES = ['awaiting_rfq_approval', 'awaiting_tradeoff', 'awaiting_signoff'];
+// Macro stage 對應：0=客戶詢價 / 1=AI工程判讀 / 2=AI多廠商比價 / 3=老闆LINE簽核 / 4=AI加密報價送出
+const STAGE_TO_MACRO = [0, 1, 1, 1, 2, 4];   // skill internal stage → macro stage（fallback）
 
 function updateMacroStages(internalStageIdx, order) {
+  // 預設由 internal scene stage 推斷
   let baseMacro = internalStageIdx >= 0 ? STAGE_TO_MACRO[internalStageIdx] : -1;
   let currentMacro = baseMacro;
-  // 老闆簽核狀態時 bump 到 macro 3
-  if (order?.status && SIGNOFF_STATUSES.includes(order.status)) {
+
+  // 用 order.status 更精準對應 phase（status 比 internal stage 更能反映「真實階段」）
+  const status = order?.status;
+
+  // ── 多廠商比價 phase（macro 2）— RFQ 整段流程都算 ──
+  // 包含：gate-pre-rfq 等老闆批准 → 寄 RFQ → 等廠商回信 → 比價 → gate-2 等老闆選廠
+  if (['awaiting_rfq_approval', 'rfq_sent', 'awaiting_replies',
+       'comparing', 'awaiting_tradeoff'].includes(status)) {
+    currentMacro = Math.max(currentMacro, 2);
+  }
+
+  // ── 老闆 LINE 簽核 phase（macro 3）— 只有 FINAL gate-3 才算 ──
+  // gate-3-final-quote-signoff（老闆對最終報價最後一次點頭）
+  // gate-pre-rfq 跟 gate-2 雖然也是 LINE 簽核，但是「比價過程中的途中決定」、不算 macro 3
+  if (['awaiting_signoff', 'awaiting_final_approval'].includes(status)) {
     currentMacro = Math.max(currentMacro, 3);
   }
-  // sys stage 完成、客戶報價已寄出 → 全 5 完成
-  if (order?.sent_to_customer_at) {
+
+  // ── 加密報價送出 phase（macro 4）──
+  if (['awaiting_email_to_customer', 'quote_sent'].includes(status) || order?.sent_to_customer_at) {
     currentMacro = 4;
-    // 全部標 done（不再有 active）
+  }
+
+  // sys stage 完成、客戶報價已寄出 → 全 5 完成（全部標 done、沒有 active）
+  if (order?.sent_to_customer_at) {
     for (let i = 0; i <= 4; i++) {
       const el = document.getElementById('ms-' + i);
       if (!el) continue;
@@ -1998,6 +2016,7 @@ function updateMacroStages(internalStageIdx, order) {
     }
     return;
   }
+
   for (let i = 0; i <= 4; i++) {
     const el = document.getElementById('ms-' + i);
     if (!el) continue;
