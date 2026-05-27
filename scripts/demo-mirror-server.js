@@ -420,6 +420,60 @@ app.post('/api/agent-trigger', (req, res) => {
   });
 });
 
+// ─── /api/order/latest (拿最新 order JSON 給左側 scene 渲染用) ──
+app.get('/api/order/latest', async (req, res) => {
+  try {
+    const result = await cached('order-latest', async () => {
+      const ORDERS_DIR = '/sandbox/.openclaw/workspace/data/orders';
+      let listOut;
+      try {
+        listOut = await execAsync(`nemoclaw ${SANDBOX} exec -- ls -t ${ORDERS_DIR}/`, 8000);
+      } catch (e) {
+        return { exists: false, note: 'orders dir 不存在 / 沒訂單' };
+      }
+      const files = listOut.split('\n').map(f => f.trim()).filter(f => /^QUO-\d{4}-\d{4}\.json$/.test(f));
+      if (files.length === 0) return { exists: false, note: '沒訂單' };
+      const latestFile = files[0];
+      const content = await execAsync(`nemoclaw ${SANDBOX} exec -- cat ${ORDERS_DIR}/${latestFile}`, 8000);
+      try {
+        return JSON.parse(content);
+      } catch {
+        return { exists: false, error: 'parse failed', raw_head: content.slice(0, 200) };
+      }
+    }, 4000);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── /api/inbox/latest (拿最新進 inbox 的 email 給左側顯示) ──
+app.get('/api/inbox/latest', async (req, res) => {
+  try {
+    const result = await cached('inbox-latest', async () => {
+      const INBOX_DIR = '/sandbox/.openclaw/workspace/data/inbox';
+      let listOut;
+      try {
+        listOut = await execAsync(`nemoclaw ${SANDBOX} exec -- ls -t ${INBOX_DIR}/`, 6000);
+      } catch {
+        return { exists: false };
+      }
+      const files = listOut.split('\n').map(f => f.trim()).filter(f => /^\d+\.json$/.test(f));
+      if (files.length === 0) return { exists: false };
+      const latestFile = files[0];
+      const content = await execAsync(`nemoclaw ${SANDBOX} exec -- cat ${INBOX_DIR}/${latestFile}`, 6000);
+      try {
+        return JSON.parse(content);
+      } catch {
+        return { exists: false, error: 'parse failed' };
+      }
+    }, 5000);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── /api/reset-demo (清乾淨重來) ──────────────────────
 // 從 dashboard 一鍵清乾淨：sessions, orders, inbox, line_notify pending, outbox 卡住的信
 // 不會清 sandbox 內 skills 本身（不用每次重 deploy）
@@ -440,6 +494,8 @@ app.post('/api/reset-demo', async (req, res) => {
     // 清 mirror server cache，下個 /api/agent-session fetch 不會看到舊資料
     _cache.delete('agent-session');
     _cache.delete('activity');
+    _cache.delete('order-latest');
+    _cache.delete('inbox-latest');
 
     res.json({
       ok: true,

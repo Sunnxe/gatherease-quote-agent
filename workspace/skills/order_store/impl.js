@@ -155,10 +155,24 @@ async function actionList({ status, limit }) {
   return { orders: summaries, count: summaries.length };
 }
 
+// 從 input shape 自動推斷 action — agent 忘了帶 action 也能跑
+// 對應 AGENTS.md 規矩：「skill cli 應該寬容」
+function inferAction(input) {
+  if (input.action) return input.action;
+  if (input.entry && input.order_id) return 'append_audit';
+  if (input.patch && input.order_id) return 'update';
+  if (input.order_id && !input.customer && !input.incoming) return 'get';
+  if (input.customer || input.incoming) return 'create';
+  return 'list';
+}
+
 async function main() {
   const input = await readStdin();
-  const action = input.action;
-  if (!action) throw new Error('action required: create | get | update | append_audit | list');
+  const action = inferAction(input);
+  // 提示用：若 agent 沒帶但被自動推斷，stderr log 一行幫 debug
+  if (!input.action) {
+    console.error(`[order_store] action 沒帶、自動推斷為 "${action}" (依 input shape)`);
+  }
 
   let result;
   switch (action) {

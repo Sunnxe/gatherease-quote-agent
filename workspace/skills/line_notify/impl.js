@@ -108,12 +108,31 @@ async function pushToLINE({ userId, accessToken, flex }) {
 // ─── main ───
 async function main() {
   const input = await readStdin();
-  const { hold_id, gate, summary, options, order_id, extra } = input;
+  let { hold_id, gate, summary, options, order_id, extra } = input;
 
-  if (!hold_id) throw new Error('hold_id required');
   if (!gate) throw new Error('gate required');
   if (!summary) throw new Error('summary required');
   if (!Array.isArray(options) || options.length === 0) throw new Error('options must be non-empty array');
+
+  // 防呆：agent 在 printf 單引號內常常寫成 \\n（literal backslash+n），LINE 會顯示「\n」字面。
+  // 強制把字面 \n / \t 轉成真換行 / tab；不影響本來就用真換行的 caller。
+  if (typeof summary === 'string') {
+    summary = summary.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+  }
+  // options 也順便清一次
+  options = options.map(o => typeof o === 'string' ? o.replace(/\\n/g, '\n').replace(/\\t/g, '\t') : o);
+
+  // 自動生成 hold_id（agent 不用自己想一個）
+  // 規則：有 order_id → `${gate}-${order_id}` （同訂單同 gate 推一次就好）
+  //       沒 order_id → timestamp + random suffix（unique）
+  if (!hold_id) {
+    if (order_id) {
+      hold_id = `${gate}-${order_id}`;
+    } else {
+      hold_id = `${gate}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    }
+    console.error(`[line_notify] hold_id 沒帶、自動生成為 "${hold_id}"`);
+  }
 
   const userId = process.env.LINE_BOSS_USER_ID;
   const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;

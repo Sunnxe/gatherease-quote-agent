@@ -310,11 +310,22 @@ async function writeOutbox(input) {
 // ─── main ───
 async function main() {
   const input = await readStdin();
-  const { to, subject, body, attachments } = input;
+  let { to, subject, body, attachments } = input;
 
   if (!to) throw new Error('to required');
   if (!subject) throw new Error('subject required');
   if (!body) throw new Error('body required');
+
+  // 防呆：agent 在 printf 單引號常常寫 \\n（字面 backslash+n），收件人會看到「\n」字面
+  // 強制把字面 \n / \t 轉成真換行 / tab
+  if (typeof body === 'string') {
+    body = body.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+    input.body = body;   // 也更新給 writeOutbox 用
+  }
+  if (typeof subject === 'string') {
+    subject = subject.replace(/\\n/g, ' ').replace(/\\t/g, ' ');   // subject 不應該有換行
+    input.subject = subject;
+  }
 
   // ── BRIDGE_MODE=outbox: 寫 JSON 給 host email-bridge.js 監看 ──
   const bridgeMode = detectBridgeMode();
