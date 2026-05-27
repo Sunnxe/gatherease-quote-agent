@@ -347,6 +347,62 @@ async function main() {
     input.attachments = attachments;   // 同步給 writeOutbox 用（bridge 才看得到正確 path）
   }
 
+  // 防呆：寄 RFQ 給廠商但漏帶 attachments → 自動從 order 拉圖紙
+  // 偵測 RFQ：subject 含「RFQ」或「詢價」+ 沒帶 attachments（或 empty）
+  // 來源：input.order_id（顯式）→ 最新 order（fallback）
+  const isRFQEmail = subject && /\b(RFQ|rfq)\b|詢價/.test(subject);
+  const noAttachments = !Array.isArray(attachments) || attachments.length === 0;
+  if (isRFQEmail && noAttachments) {
+    try {
+      const fsLocal = require('fs');
+      const pathLocal = require('path');
+      const { findOrdersDir } = require('../_lib/order_writeback');
+      const ORDERS_DIR = findOrdersDir();
+
+      let drawingPath = null;
+      // 1. 從 input.order_id 拉
+      if (input.order_id) {
+        const op = pathLocal.join(ORDERS_DIR, `${input.order_id}.json`);
+        if (fsLocal.existsSync(op)) {
+          const ord = JSON.parse(fsLocal.readFileSync(op, 'utf8'));
+          drawingPath = ord?.incoming?.drawing_attachment_path
+                     || ord?.engineering_read?._meta?.drawing_path
+                     || null;
+        }
+      }
+      // 2. fallback：找最新 order
+      if (!drawingPath && fsLocal.existsSync(ORDERS_DIR)) {
+        const files = fsLocal.readdirSync(ORDERS_DIR)
+          .filter(f => /^QUO-\d{4}-\d{4}\.json$/.test(f))
+          .sort().reverse();   // newest first
+        for (const f of files) {
+          try {
+            const ord = JSON.parse(fsLocal.readFileSync(pathLocal.join(ORDERS_DIR, f), 'utf8'));
+            // 只挑還在 rfq 階段的（status 不是 quote_sent）
+            if (['quote_sent','sent','cancelled'].includes(ord.status)) continue;
+            const dp = ord?.incoming?.drawing_attachment_path
+                    || ord?.engineering_read?._meta?.drawing_path;
+            if (dp && fsLocal.existsSync(dp)) {
+              drawingPath = dp;
+              break;
+            }
+          } catch {}
+        }
+      }
+
+      if (drawingPath) {
+        const filename = drawingPath.split('/').pop() || 'drawing.pdf';
+        attachments = [{ path: drawingPath, filename: 'drawing.pdf' }];
+        input.attachments = attachments;
+        console.error(`[send_email] 偵測到 RFQ 但漏帶 attachments — 自動附加 ${filename}`);
+      } else {
+        console.error(`[send_email] ⚠️ RFQ email 但找不到圖紙路徑，仍寄出但無附件`);
+      }
+    } catch (e) {
+      console.error(`[send_email] auto-attach 失敗: ${e.message}`);
+    }
+  }
+
   // ── BRIDGE_MODE=outbox: 寫 JSON 給 host email-bridge.js 監看 ──
   const bridgeMode = detectBridgeMode();
   if (bridgeMode === 'outbox') {

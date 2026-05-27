@@ -259,6 +259,7 @@ inbox JSON 已寫到 /sandbox/.openclaw/workspace/data/inbox/74010.json。
    Call #3 — to: xpert.back.work@gmail.com     / subject 含「- 順興電鍍工業」/ 內文稱「李課長」
 
    每封都帶 attachments: [{"path": DRAWING_PATH, "filename": "drawing.pdf"}]
+   （或：subject 含「RFQ」+ 帶 order_id，send_email 會自動拉圖紙、不用 attachments）
 
 5. order_store update {patch: {rfq_sent_to: ["SUP-001","SUP-002","SUP-003"], rfq_sent_at, status: "rfq_sent"}}
    ⚠️ 只有真的 send_email × 3 次都回 status:"queued" 才能 update rfq_sent_to！
