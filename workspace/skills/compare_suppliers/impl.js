@@ -11,11 +11,28 @@
  */
 
 const fs = require('fs/promises');
+const fsSync = require('fs');
 const path = require('path');
-const { writebackToOrder } = require('../_lib/order_writeback');
+const { writebackToOrder, findOrdersDir } = require('../_lib/order_writeback');
 
 const SKILL_DIR = __dirname;
 const SUPPLIERS_JSON = path.join(SKILL_DIR, 'data', 'suppliers.json');
+
+// 從 order 拉本次廠商的 real reply（agent 寫進 order.supplier_replies）
+// → 用實際 reply 的 price / lead / ESD 覆蓋 suppliers.json 的標準值
+function loadReplyOverrides(order_id) {
+  if (!order_id) return {};
+  try {
+    const orderPath = path.join(findOrdersDir(), `${order_id}.json`);
+    if (!fsSync.existsSync(orderPath)) return {};
+    const order = JSON.parse(fsSync.readFileSync(orderPath, 'utf8'));
+    const map = {};
+    for (const rep of (order.supplier_replies || [])) {
+      if (rep.supplier_id) map[rep.supplier_id] = rep;
+    }
+    return map;
+  } catch { return {}; }
+}
 
 async function readStdin() {
   return new Promise((resolve, reject) => {
@@ -109,21 +126,32 @@ async function main() {
   const maxDays = customer_requirements.max_surface_treatment_days ?? Infinity;
   const requiresAntiStatic = !!customer_requirements.requires_anti_static;
 
+  // ⚡ 用本次廠商真實回信的 price/lead/ESD 覆蓋 suppliers.json 標準值
+  // suppliers.json 還是 source of truth for certifications/yield/notes 等不變欄
+  const replyOverrides = loadReplyOverrides(order_id);
   const candidates = supplier_ids
     .map(id => suppliers.find(s => s.id === id))
     .filter(Boolean)
-    .map(s => ({
-      supplier_id: s.id,
-      name: s.name,
-      price_twd: s.pricing.unit_price_twd,
-      lead_time_days: s.lead_time_days,
-      yield_rate_pct: s.quality.yield_rate_pct,
-      anti_static: s.quality.anti_static_capable,
-      certifications: s.quality.certifications || [],
-      meets_lead_time: s.lead_time_days <= maxDays,
-      meets_quality: !requiresAntiStatic || s.quality.anti_static_capable,
-      notes: s.notes
-    }));
+    .map(s => {
+      const rep = replyOverrides[s.id] || {};
+      const price = rep.unit_price_twd ?? rep.price_twd ?? s.pricing.unit_price_twd;
+      const lead = rep.lead_time_days ?? s.lead_time_days;
+      const anti = rep.anti_static_capable ?? s.quality.anti_static_capable;
+      return {
+        supplier_id: s.id,
+        name: s.name,
+        price_twd: price,
+        lead_time_days: lead,
+        yield_rate_pct: rep.yield_rate_pct ?? s.quality.yield_rate_pct,
+        anti_static: anti,
+        certifications: s.quality.certifications || [],
+        meets_lead_time: lead <= maxDays,
+        meets_quality: !requiresAntiStatic || anti,
+        notes: s.notes,
+        // 透明性：表明資料來源（demo 觀眾可看出用的是 reply 還是 default）
+        _price_source: rep.unit_price_twd != null || rep.price_twd != null ? 'reply' : 'suppliers.json'
+      };
+    });
 
   if (candidates.length === 0) {
     process.stdout.write(JSON.stringify({

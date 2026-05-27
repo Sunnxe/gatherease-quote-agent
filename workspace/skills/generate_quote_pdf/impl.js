@@ -37,15 +37,27 @@ function loadOrderForPdf(orderId) {
     }
     if (!supplierName) supplierName = cmp?.recommendation?.name || null;
 
+    // ⚡ 老闆 LINE 簽核時打字改價、優先用那個數字
+    // order.manual_override_unit_price_twd 是 agent 在 [LINE_CB] 收到老闆打字後寫進去的
+    const qty = cb.qty || sc.qty || null;
+    const override = order.manual_override_unit_price_twd;
+    const computedPrice = cb.suggested_unit_price_twd || null;
+    const finalUnit = (Number.isFinite(override) && override > 0) ? override : computedPrice;
+    const finalTotal = (finalUnit && qty) ? finalUnit * qty : (cb.suggested_revenue_twd || null);
+
     return {
       customer_name:  order.customer?.name || null,
       customer_email: order.customer?.email || order.customer?.contact_email || null,
       product_name:   er.product_name_zh || er.product_id || null,
-      qty:            cb.qty || sc.qty || null,
-      unit_price_twd: cb.suggested_unit_price_twd || null,
-      total_twd:      cb.suggested_revenue_twd || (cb.suggested_unit_price_twd && cb.qty ? cb.suggested_unit_price_twd * cb.qty : null),
-      lead_days:      sc.total_lead_time_days || null,
-      supplier_choice: supplierName
+      qty,
+      unit_price_twd:  finalUnit,
+      total_twd:       finalTotal,
+      lead_days:       sc.total_lead_time_days || null,
+      supplier_choice: supplierName,
+      // 給 audit trail 看的：用的是老闆 override 還是 AI 算的
+      _price_source:   (Number.isFinite(override) && override > 0)
+        ? `boss_override (LINE 老闆指定 NT$${override})`
+        : `auto_calc (calc_cost NT$${computedPrice})`
     };
   } catch (e) {
     return null;
@@ -146,6 +158,7 @@ async function main() {
   if (!total_twd)      total_twd      = fromOrder.total_twd;
   if (!lead_days)      lead_days      = fromOrder.lead_days;
   if (!supplier_choice) supplier_choice = fromOrder.supplier_choice;
+  const priceSource = fromOrder._price_source;   // 留給 audit trail
 
   if (!customer_name) throw new Error('customer_name required (order 沒帶 customer.name、agent 也沒給)');
   if (!product_name)  throw new Error('product_name required (order 沒 read_drawing 結果、agent 也沒給)');
@@ -319,10 +332,12 @@ async function main() {
     },
     audit: {
       level: 'INFO',
-      msg: `quote PDF generated: ${path.basename(pdfPath)}`,
+      msg: `quote PDF generated: ${path.basename(pdfPath)} · unit NT$${unit_price_twd}`,
       skill: 'generate_quote_pdf',
       pdf_size: stat.size,
-      password_protected: !!pwd
+      password_protected: !!pwd,
+      unit_price_twd,
+      price_source: priceSource || 'agent_param'   // boss_override / auto_calc / agent_param
     }
   });
 

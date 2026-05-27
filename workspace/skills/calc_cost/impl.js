@@ -25,6 +25,36 @@ function readOrderBom(order_id) {
   } catch { return null; }
 }
 
+// 從 order 拉老闆選定的 supplier_id（gate-2 audit_trail 紀錄）
+// 讓 agent 在 gate-2 後不用記得手動帶 surface_treatment_supplier_id
+function readChosenSupplierId(order_id) {
+  try {
+    const p = path.join(findOrdersDir(), `${order_id}.json`);
+    if (!fsSync.existsSync(p)) return null;
+    const order = JSON.parse(fsSync.readFileSync(p, 'utf8'));
+    // 1. 優先看 order.chosen_supplier_id（agent gate-2 callback 後設的）
+    if (order?.chosen_supplier_id) return order.chosen_supplier_id;
+    // 2. 從 audit_trail 找 gate-2 的 chosen_supplier_id
+    for (const audit of (order?.audit_trail || []).slice().reverse()) {
+      if (audit.chosen_supplier_id) return audit.chosen_supplier_id;
+    }
+    return null;
+  } catch { return null; }
+}
+
+// 從 order.supplier_replies 拉特定廠商本次的真實報價（覆蓋 suppliers.json 標準值）
+function readSupplierReplyPrice(order_id, supplier_id) {
+  if (!order_id || !supplier_id) return null;
+  try {
+    const p = path.join(findOrdersDir(), `${order_id}.json`);
+    if (!fsSync.existsSync(p)) return null;
+    const order = JSON.parse(fsSync.readFileSync(p, 'utf8'));
+    const rep = (order.supplier_replies || []).find(r => r.supplier_id === supplier_id);
+    if (!rep) return null;
+    return rep.unit_price_twd ?? rep.price_twd ?? null;
+  } catch { return null; }
+}
+
 const OVERHEAD_PCT = 12;
 const MARKUP_TABLE = { tier_A: 32, tier_B: 24, tier_C: 18 };
 
@@ -74,7 +104,7 @@ async function loadSuppliers() {
   } catch { return []; }
 }
 
-async function calcCost({ product_id, bom, qty, surface_treatment_supplier_id, customer_tier = 'tier_A' }) {
+async function calcCost({ product_id, bom, qty, surface_treatment_supplier_id, customer_tier = 'tier_A', order_id }) {
   if (!Array.isArray(bom)) throw new Error('bom must be an array of {part_name, qty_per_unit}');
   if (!Number.isFinite(qty) || qty <= 0) throw new Error('qty must be > 0');
 
@@ -82,9 +112,21 @@ async function calcCost({ product_id, bom, qty, surface_treatment_supplier_id, c
   const suppliers = await loadSuppliers();
 
   let surfaceSupplier = null;
+  let surfaceSourceTag = null;
   if (surface_treatment_supplier_id) {
     surfaceSupplier = suppliers.find(s => s.id === surface_treatment_supplier_id);
     if (!surfaceSupplier) throw new Error(`Supplier not found: ${surface_treatment_supplier_id}`);
+    // ⚡ 用本次廠商真實 reply 報價覆蓋 suppliers.json 標準值
+    const replyPrice = readSupplierReplyPrice(order_id, surface_treatment_supplier_id);
+    if (replyPrice != null) {
+      surfaceSupplier = {
+        ...surfaceSupplier,
+        pricing: { ...surfaceSupplier.pricing, unit_price_twd: replyPrice }
+      };
+      surfaceSourceTag = `supplier-reply:${surfaceSupplier.name} (本案 NT$${replyPrice}/隻)`;
+    } else {
+      surfaceSourceTag = `suppliers.json default:${surfaceSupplier.name} (NT$${surfaceSupplier.pricing.unit_price_twd}/隻)`;
+    }
   }
 
   const lineItems = [];
@@ -173,6 +215,16 @@ async function main() {
     const bomFromOrder = readOrderBom(order_id);
     if (bomFromOrder) {
       input.bom = bomFromOrder;
+    }
+  }
+
+  // ⚡ 防呆：agent 沒帶 surface_treatment_supplier_id 但 order 裡老闆已選了 → 自動套用
+  // 這樣 gate-2 後 agent 只要 call calc_cost {order_id} 就會自動用對的廠商
+  if (!input.surface_treatment_supplier_id && order_id) {
+    const chosen = readChosenSupplierId(order_id);
+    if (chosen) {
+      input.surface_treatment_supplier_id = chosen;
+      console.error(`[calc_cost] surface_treatment_supplier_id 沒帶、從 order 自動拉 = "${chosen}"`);
     }
   }
 

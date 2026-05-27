@@ -414,6 +414,7 @@ cat /tmp/rfq-sup001.json | bash /sandbox/.openclaw/workspace/skills/send_email/c
      • customer_name / customer_email (從 order.customer)
      • product_name (從 engineering_read.product_name_zh)
      • qty / unit_price_twd / total_twd (從 cost_baseline)
+       ⚡ 優先用 order.manual_override_unit_price_twd（老闆 LINE 打字改價）
      • lead_days (從 schedule_check)
      • supplier_choice (從 comparison.ranked 老闆選的)
    → auto-writeback final_quote_pdf_path + final_cost + status=awaiting_email_to_customer
@@ -433,6 +434,52 @@ cat /tmp/rfq-sup001.json | bash /sandbox/.openclaw/workspace/skills/send_email/c
 ```
 
 **從 5 步剪到 3 步**，agent 不用手抄報價數字、不用更新訂單欄位 — 全自動。
+
+---
+
+### 🟡 情境 E2：老闆 LINE 按「修改價格」或直接打字改價
+
+**訊號**（兩種模式）：
+
+**模式 a — 老闆按 gate-3 LINE 的「修改價格」button**：
+```
+[LINE_CB] 老闆已決定 hold_id=gate-3-final-quote-signoff-QUO-2026-0001 choice=1 action=修改價格
+```
+
+**模式 b — 老闆在 LINE 直接打文字訊息傳數字**（webhook 把它注入成 user message）：
+```
+改成 1700
+```
+或
+```
+NT$ 1700 / 隻
+```
+或
+```
+1700
+```
+
+**收到模式 a (button 修改價格)**：
+
+```
+1. order_store get → 顯示目前單價，跟 user 講「廖老闆已選擇修改價格。請在 LINE 直接打字傳新單價（純數字、或像『改成 1700』、『NT$ 1700』都行）」
+2. (等 user 後續 inject 數字訊息)
+```
+
+**收到模式 b (純數字訊息或含數字訊息)**：
+
+```
+1. 從 user message regex 抓單價數字（範圍 100~99999、整數）：
+   /(?:改成|改|new\s*price|NT\$?|單價|每隻|)\s*([\d,]+)/i
+   或最簡單：抓第一個 4 位數
+2. order_store update {order_id, patch: {manual_override_unit_price_twd: <number>}}
+3. 確認並走情境 E（generate_quote_pdf 會自動用這個 override 不是 calc_cost 算的）
+   ✅ 不用重算 calc_cost、不用 push 第二次 gate-3
+4. 直接 generate_quote_pdf {order_id} + send_email 給客戶
+5. 跟 user 講「✅ 採納廖老闆指定單價 NT$1,700/隻 寄出報價單」
+```
+
+**為什麼要支援這個**：實戰中老闆看到 AI 算的 NT$1,609 可能說「太低、給客戶 1,700」或「給長期客戶優惠改 1,500」— **agent 必須尊重老闆最後的數字**、不能堅持用 AI 算的。Audit trail 會記 `price_source: boss_override (LINE 老闆指定 NT$1700)`。
 
 ---
 
@@ -490,7 +537,7 @@ webhook 注入的 user message 格式長這樣：
    | gate-1-secret-probe | 0=「仍正常報價」 / 1=「暫停」 / 2=「回信婉拒」 | 走情境 F 對應動作 |
    | gate-pre-rfq | 0=「發詢價」 / 1=「修改名單」 / 2=「取消」 | 走**情境 B** (send_email 3 RFQ) |
    | gate-2-tradeoff-decision | **三條路**：choice=0/1 → ranked[choice] supplier_id；choice=2 → pending.extra.strategy（AI 策略，不選 supplier 改發協商信） | 走**情境 D1**（定 supplier）或 **D2**（採納 AI 策略 → 發協商信給客戶） |
-   | gate-3-final-quote-signoff | 0=「簽核並寄出」 / 1=「修改價格」 / 2=「取消」 | 走**情境 E** (generate_quote_pdf + send_email 客戶) |
+   | gate-3-final-quote-signoff | 0=「簽核並寄出」 / 1=「修改價格」 / 2=「取消」 | choice=0 走**情境 E** (用 AI 算的價寄)、choice=1 走**情境 E2** (等老闆 LINE 打字改價、寫 manual_override_unit_price_twd 後再寄)、choice=2 取消 |
 
 3. **更新 order_store audit + status**：
    ```
