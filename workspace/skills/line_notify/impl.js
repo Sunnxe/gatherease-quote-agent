@@ -10,12 +10,114 @@
  */
 
 const fs = require('fs/promises');
+const fsSync = require('fs');
 const path = require('path');
 
 const SKILL_DIR = __dirname;
 const PENDING_DIR = path.join(SKILL_DIR, 'pending');
+const ORDERS_DIR = '/sandbox/.openclaw/workspace/data/orders';
+const SUPPLIERS_FILE = '/sandbox/.openclaw/workspace/data/suppliers.json';
 
 const LINE_PUSH_URL = 'https://api.line.me/v2/bot/message/push';
+
+// ─── 自動從 order JSON 構 summary（避免 agent 自己組搞錯數字 / 格式 / 廠商名）───
+function buildSummaryFromOrder(orderId, gate) {
+  try {
+    const orderPath = path.join(ORDERS_DIR, `${orderId}.json`);
+    if (!fsSync.existsSync(orderPath)) return null;
+    const order = JSON.parse(fsSync.readFileSync(orderPath, 'utf8'));
+    const er = order.engineering_read || {};
+    const cb = order.cost_baseline || {};
+    const sc = order.schedule_check || {};
+    const customer = order.customer || {};
+
+    // 數量 — 優先從 cost_baseline 拿 (真實算出來的)；fallback engineering_read
+    const qty = cb.qty || sc.qty || 500;
+    const unitPrice = cb.suggested_unit_price_twd;
+    const totalRevenue = cb.suggested_revenue_twd || (unitPrice ? unitPrice * qty : null);
+
+    if (gate === 'gate-pre-rfq') {
+      // 載入 3 家代工廠資料
+      let suppliers = [];
+      try {
+        const s = JSON.parse(fsSync.readFileSync(SUPPLIERS_FILE, 'utf8'));
+        suppliers = (s.suppliers || []).filter(x => x.category === 'surface-treatment-vendor');
+      } catch {}
+      const supplierList = suppliers.map(s => `· ${s.name}（${s.contact?.name || ''}）${s.contact?.email || ''}`).join('\n');
+
+      // 鐵輪規格 — 從 engineering_read 抓
+      const specs = er.specs || {};
+      const wheelSpec = specs.shaft_total_length_mm
+        ? `S45C 碳鋼 · 外徑 ${specs.outer_diameter_mm}mm × 長 ${specs.shaft_total_length_mm}mm`
+        : '鐵輪規格從圖紙';
+      const antiStatic = er.quality_requirements?.anti_static_required;
+
+      const lines = [
+        `📋 詢價單彙整 · 表面處理外發`,
+        ``,
+        `[訂單摘要]`,
+        `客戶：${customer.name || '-'}`,
+        `產品：${er.product_name_zh || er.product_id || '-'}`,
+        `數量：${qty} 隻`,
+        `建議單價：NT$ ${unitPrice ? unitPrice.toLocaleString() : '-'}`,
+        `總價：NT$ ${totalRevenue ? totalRevenue.toLocaleString() : '-'}`,
+        `最快交期：${sc.total_lead_time_days || '-'} 天（客戶要 ${sc.customer_desired_lead_days || '-'} 天${sc.achievable ? '、達標' : ''}）`,
+        ``,
+        `[要外發什麼處理]`,
+        `🔧 鐵輪表面處理 × ${qty} 隻`,
+        `· 鐵輪本體：${wheelSpec}`,
+        `· 處理項目：去銳角、毛邊${antiStatic ? '、需 ESD 導電基底' : ''}`,
+        `· 桐聚後段自家做：矽膠包覆${antiStatic ? '（含 ESD 抗靜電配方）' : ''} + 組裝 + QC`,
+        ``,
+        `[將發 RFQ 給 3 家表面處理代工廠]`,
+        supplierList || '（讀 suppliers.json 失敗）',
+        ``,
+        `老闆確認後寄出？`
+      ];
+      return lines.join('\n');
+    }
+
+    if (gate === 'gate-2-tradeoff-decision') {
+      const cmp = order.comparison || {};
+      const lines = [
+        `⚖️ 多維權衡`,
+        ``,
+        cmp.recommendation?.headline || 'AI 推薦中...',
+        `理由：${cmp.recommendation?.one_liner || '-'}`,
+        ``,
+        `完整對比：`,
+        cmp.trade_off_table || '-',
+      ];
+      const strat = cmp.strategies?.[0];
+      if (strat) {
+        lines.push('', strat.headline || '', strat.rationale?.split('\n').slice(0, 4).join('\n') || '');
+      }
+      return lines.join('\n');
+    }
+
+    if (gate === 'gate-3-final-quote-signoff') {
+      const finalCost = order.final_cost || cb;
+      const supplier = finalCost.surface_treatment_supplier_used;
+      const lines = [
+        `✍️ 最終報價簽核`,
+        ``,
+        `客戶：${customer.name || '-'}`,
+        `產品：${er.product_name_zh || '-'}`,
+        `數量：${qty} 隻`,
+        `單價：NT$ ${finalCost.suggested_unit_price_twd?.toLocaleString() || '-'}`,
+        `總價：NT$ ${finalCost.suggested_revenue_twd?.toLocaleString() || '-'}`,
+        `表面處理：${supplier?.name || '-'}（單件加工費 NT$ ${supplier?.unit_price_twd || '-'}）`,
+        `毛利率：${finalCost.markup_pct_applied || '-'}%`,
+        ``,
+        `簽核並寄出報價單給客戶？`
+      ];
+      return lines.join('\n');
+    }
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
 
 async function readStdin() {
   return new Promise((resolve, reject) => {
@@ -42,7 +144,8 @@ function buildFlexMessage({ hold_id, gate, summary, options }) {
   const meta = gateColorMap[gate] || { emoji: '🛡️', color: '#76B900', label: gate };
 
   const altText = `${meta.emoji} NemoClaw 守門・${meta.label} — ${(summary || '').slice(0, 80)}`;
-  const safeBody = (summary || '').length > 380 ? summary.slice(0, 380) + '…' : (summary || '');
+  // LINE flex text 上限約 2000 字、實際裝得進 ~1500 看得舒服。
+  const safeBody = (summary || '').length > 1500 ? summary.slice(0, 1500) + '…' : (summary || '');
 
   return {
     type: 'flex',
@@ -111,8 +214,18 @@ async function main() {
   let { hold_id, gate, summary, options, order_id, extra } = input;
 
   if (!gate) throw new Error('gate required');
-  if (!summary) throw new Error('summary required');
   if (!Array.isArray(options) || options.length === 0) throw new Error('options must be non-empty array');
+
+  // 自動從 order JSON 構 rich summary（避免 agent 漏欄位 / format 出包）
+  // 規則：有 order_id → 一律用 buildSummaryFromOrder()；agent 傳的 summary 只當 fallback
+  if (order_id) {
+    const auto = buildSummaryFromOrder(order_id, gate);
+    if (auto) {
+      summary = auto;   // ← 強制覆蓋 agent 的 summary，保證資料對、格式對
+    }
+  }
+
+  if (!summary) throw new Error('summary required (沒提供 order_id 也沒給 summary)');
 
   // 防呆：agent 在 printf 單引號內常常寫成 \\n（literal backslash+n），LINE 會顯示「\n」字面。
   // 強制把字面 \n / \t 轉成真換行 / tab；不影響本來就用真換行的 caller。

@@ -147,6 +147,23 @@
   .inbox-status{align-self:center;color:var(--nv-green-bright);font-size:11.5px;font-weight:700;display:flex;align-items:center;gap:7px;margin-top:4px;background:rgba(118,185,0,.12);padding:5px 11px;border-radius:999px;animation:pop .35s ease}
   .inbox-status .dot{width:7px;height:7px;border-radius:50%;background:var(--nv-green);animation:pulse 1.2s infinite}
 
+  /* ---------- HISTORY MATCHES SCENE ---------- */
+  .history-scene{background:#0e1a14}
+  .history-head{background:#15303a;color:#7fb0ff;padding:12px 14px;font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;flex-shrink:0}
+  .history-head .badge{margin-left:auto;font-size:9px;background:rgba(127,176,255,.18);padding:3px 8px;border-radius:6px;font-family:'JetBrains Mono',monospace}
+  .history-body{flex:1;overflow-y:auto;padding:14px 14px;display:flex;flex-direction:column;gap:8px}
+  .history-body::-webkit-scrollbar{width:0}
+  .history-summary{background:#13202e;border:1px solid #2c3e54;border-radius:10px;padding:10px 12px;font-size:11px;color:#c8d6e8}
+  .history-summary .scan-count{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:800;color:#7fb0ff}
+  .history-row{background:#13202e;border-left:3px solid #7fb0ff;padding:8px 11px;font-size:11px;color:#c8d6e8;border-radius:0 8px 8px 0;animation:pop .35s ease}
+  .history-row .hr-top{display:flex;justify-content:space-between;font-size:10.5px;color:#7fb0ff;font-weight:700}
+  .history-row .hr-pn{font-weight:700;color:#e0eaf5;font-size:12px;margin:3px 0}
+  .history-row .hr-meta{display:flex;gap:10px;font-size:10.5px;color:#9fb4d0;flex-wrap:wrap}
+  .history-row .hr-meta b{color:#e0eaf5;font-family:'JetBrains Mono',monospace}
+  .history-row .hr-score{margin-left:auto;font-family:'JetBrains Mono',monospace;color:#7fb0ff;font-weight:700}
+  .history-avg{background:#1a2d2a;border:2px solid var(--nv-green);border-radius:10px;padding:11px 13px;color:var(--nv-green-bright);font-weight:800;font-size:14px;text-align:center;animation:pop .4s ease;margin-top:4px}
+  .history-avg .lbl{font-size:10.5px;color:#9fb4d0;font-weight:600;margin-bottom:4px}
+
   /* ---------- PLANNER GANTT SCENE ---------- */
   .planner-scene{background:#0d1218}
   .planner-head{background:#1a2535;color:#e0b94a;padding:12px 14px;font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;flex-shrink:0}
@@ -576,6 +593,12 @@
         <div class="scene inbox-scene" id="inboxScene">
           <div class="inbox-head">📥 收件匣 · 新詢價偵測<span class="badge" id="inboxBadge">live</span></div>
           <div class="inbox-body" id="inboxBody"></div>
+        </div>
+
+        <!-- history scene (get_history_quote output) -->
+        <div class="scene history-scene" id="historyScene">
+          <div class="history-head">🔍 報價助理 · 歷史相似單比對<span class="badge">10k 筆訂單</span></div>
+          <div class="history-body" id="historyBody"></div>
         </div>
 
         <!-- planner Gantt scene (check_schedule output) -->
@@ -1416,10 +1439,10 @@ const SKILL_LABEL = {
   compare_suppliers:  '⚖️ 三家比價',
   generate_quote_pdf: '📄 出報價 PDF',
   order_store:        '📒 訂單狀態',
-  inbox_watch:        '📥 收信',
-  send_email:         '📧 寄信',
-  line_notify:        '📱 推 LINE',
-  get_history_quote:  '🔍 查歷史單'
+  inbox_watch:        '📥 收信 (inbox)',
+  send_email:         '📤 寄信 (outbound)',
+  line_notify:        '📱 推 LINE 給老闆',
+  get_history_quote:  '🔍 查歷史相似單'
 };
 
 // 從 exec command 字串抓 skill name
@@ -1585,13 +1608,20 @@ setInterval(refreshMultiAgentAndTimeline, 8000);
 //   send_email                         → supplierView (廠商收件匣)
 //   compare_suppliers / generate_quote_pdf / line_notify / order_store(else) → 不動 (留前一個 scene)
 const SKILL_TO_SCENE = {
-  inbox_watch: 'inbox',
-  read_drawing: 'engineer',
-  check_schedule: 'planner',
-  send_email: 'supplier',
+  order_store:        'inbox',     // create 時 = 新詢價畫面
+  inbox_watch:        'inbox',
+  read_drawing:       'engineer',
+  get_history_quote:  'history',   // 歷史比對單獨 scene
+  check_schedule:     'planner',
+  calc_cost:          'planner',
+  send_email:         'supplier',  // 寄 RFQ → supplierView 自動顯示「寄件給廠商」mode
+  compare_suppliers:  'supplier',  // 比 3 家 → supplierView 自動顯示「廠商回信」mode
   generate_quote_pdf: 'sys'
-  // order_store / get_history_quote / compare_suppliers / line_notify → 不切，留前一個 scene
+  // line_notify → 不切，停在最後一個
 };
+
+// 場景階段順序 — scene 只能前進、不會倒退
+const STAGE_ORDER = ['inbox', 'engineer', 'history', 'planner', 'supplier', 'sys'];
 
 let _currentScene = null;     // 避免重複動畫
 let _lastSceneSkillId = null; // 偵測新 tool call
@@ -1602,6 +1632,7 @@ function hideAllScenes() {
   document.getElementById('sysScene')?.classList.remove('show');
   document.getElementById('inboxScene')?.classList.remove('show');
   document.getElementById('plannerScene')?.classList.remove('show');
+  document.getElementById('historyScene')?.classList.remove('show');
 }
 
 function setScene(name) {
@@ -1610,6 +1641,7 @@ function setScene(name) {
   switch(name) {
     case 'inbox':    document.getElementById('inboxScene').classList.add('show'); break;
     case 'engineer': document.getElementById('engScene').classList.add('show'); break;
+    case 'history':  document.getElementById('historyScene').classList.add('show'); break;
     case 'planner':  document.getElementById('plannerScene').classList.add('show'); break;
     case 'supplier': document.getElementById('supplierView').classList.add('show'); break;
     case 'sys':      document.getElementById('sysScene').classList.add('show'); break;
@@ -1753,57 +1785,126 @@ function renderPlannerScene(order) {
     </div>`;
 }
 
-// supplier scene — 顯示 3 封 RFQ outbound
+// history scene — get_history_quote 的歷史相似單比對
+function renderHistoryScene(order) {
+  const body = document.getElementById('historyBody');
+  if (!body) return;
+  const hm = order?.history_matches;
+  if (!hm || !Array.isArray(hm.matches) || hm.matches.length === 0) {
+    body.innerHTML = '<div class="empty" style="color:#999">掃 10k 筆歷史訂單中...</div>';
+    return;
+  }
+  const matches = hm.matches.slice(0, 5);
+  const newOrder = hm.new_order_input || {};
+  const rowsHtml = matches.map(m => `
+    <div class="history-row">
+      <div class="hr-top">
+        <span>OrderID #${m.OrderID || '-'} · ${escapeHtml(m.OrderDate || '')}</span>
+        <span class="hr-score">score ${m.score?.toFixed(3) || '-'}</span>
+      </div>
+      <div class="hr-pn">${escapeHtml(m.ProductName || '-')}</div>
+      <div class="hr-meta">
+        <span>規格 <b>${escapeHtml(m.Spec || '-')}</b></span>
+        <span>硬度 <b>Shore A ${m.Hardness || '-'}</b></span>
+        <span>數量 <b>${m.Quantity || '-'}</b></span>
+        ${m.Color ? `<span>色 <b>${escapeHtml(m.Color)}</b></span>` : ''}
+      </div>
+    </div>
+  `).join('');
+
+  const avgPriceHtml = hm.weighted_avg_unit_price ? `
+    <div class="history-avg">
+      <div class="lbl">📊 加權平均單價（依相似度權重）</div>
+      NT$ ${hm.weighted_avg_unit_price.toLocaleString()}
+    </div>
+  ` : '';
+
+  body.innerHTML = `
+    <div class="history-summary">
+      📚 在 <span class="scan-count">${(hm._meta?.historical_orders_scanned || 10000).toLocaleString()}</span> 筆歷史訂單中找相似單<br>
+      <span style="font-size:10.5px;color:#7a8ca0">新單：${escapeHtml(newOrder.ProductName || '-')} · Shore A ${newOrder.Hardness || '-'} · ${(newOrder.Spec || []).join('×')}</span><br>
+      <span style="font-size:10px;color:#7a8ca0">算法：產品名 40% + 日期 30% + 規格 20% + 硬度 10%</span>
+    </div>
+    ${rowsHtml}
+    ${avgPriceHtml}
+  `;
+}
+
+// supplier scene — 動態 title 區分「寄件給廠商」vs「廠商回信收件匣」
 function renderSupplierScene(order) {
   const body = document.getElementById('svBody');
   const sub = document.getElementById('svSub');
+  const titleEl = document.querySelector('#supplierView .sv-title');
   if (!body) return;
-  if (!order?.rfq_sent_to || order.rfq_sent_to.length === 0) {
+
+  const sent = order?.rfq_sent_to || [];
+  const replies = order?.supplier_replies || [];
+
+  // mode 偵測：有回信 ≥1 = 收件匣模式；只有寄出 = 寄件模式
+  const mode = (replies.length > 0) ? 'inbound' : 'outbound';
+
+  if (titleEl) {
+    titleEl.textContent = mode === 'inbound'
+      ? '📥 廠商端 · 收件匣'
+      : '📤 寄件給廠商 · RFQ 已發出';
+  }
+  if (sub) {
+    sub.textContent = mode === 'inbound'
+      ? `${replies.length}/${sent.length} 家已回信`
+      : `${sent.length} 封 RFQ 寄出 · 等廠商回信中...`;
+  }
+
+  if (sent.length === 0) {
     body.innerHTML = '<div class="empty" style="color:#999">準備寄 RFQ...</div>';
-    if (sub) sub.textContent = 'agent 對外發送中...';
     return;
   }
-  // 從 order.comparison（如果有）拿廠商名字；否則 fallback 用 email
+
   const supplierMap = {
-    'sunny.liao@gatherease.ai': '全鋼表處（陳廠長）',
-    'gathereasebot@gmail.com': '大同精密表面（黃經理）',
-    'xpert.back.work@gmail.com': '順興電鍍工業（李課長）'
+    'sunny.liao@gatherease.ai':   { name: '全鋼表處', contact: '陳廠長' },
+    'gathereasebot@gmail.com':    { name: '大同精密表面', contact: '黃經理' },
+    'xpert.back.work@gmail.com':  { name: '順興電鍍工業', contact: '李課長' }
   };
   const sentAt = order.rfq_sent_at || '';
-  const productName = order.engineering_read?.product_name_zh || '包膠輪';
-  const qty = order.engineering_read?.specs ? 500 : '?';
+  const qty = order.cost_baseline?.qty || order.schedule_check?.qty || '?';
 
-  if (sub) sub.textContent = `${order.rfq_sent_to.length} 封 RFQ 已寄出 · 等廠商回信`;
+  const sentEmailsHtml = sent.map(email => {
+    const info = supplierMap[email] || { name: email, contact: '' };
+    return `
+      <div class="email reply">
+        <div class="efrom">
+          <span>📤 To: ${escapeHtml(info.name)}${info.contact ? `（${escapeHtml(info.contact)}）` : ''}</span>
+          <span class="etime">${formatLocalTime(sentAt)}</span>
+        </div>
+        <div class="esub">【RFQ】鐵輪表面處理外發 × ${qty} - ${escapeHtml(info.name)}</div>
+        <div class="ebody" style="font-size:10.5px;color:#666">
+          ${escapeHtml(email)}<br>
+          附件：drawing.pdf · 透過 NemoClaw kernel egress 寄送
+        </div>
+      </div>
+    `;
+  }).join('');
 
-  const sentEmails = order.rfq_sent_to.map((email, i) => `
-    <div class="email reply">
-      <div class="efrom">
-        <span>📧 To: ${escapeHtml(supplierMap[email] || email)}</span>
-        <span class="etime">${formatLocalTime(sentAt)}</span>
-      </div>
-      <div class="esub">【RFQ】鐵輪表面處理外發 × ${qty} - ${escapeHtml(supplierMap[email]?.split('（')[0] || email)}</div>
-      <div class="ebody" style="font-size:10.5px;color:#666">
-        附件：drawing.pdf · 已透過 NemoClaw kernel egress 寄送
-      </div>
-    </div>
-  `).join('');
   // 廠商回信
-  const repliesHtml = (order.supplier_replies || []).map(rep => `
-    <div class="email">
-      <div class="efrom">
-        <span>📨 From: ${escapeHtml(rep.supplier_id || rep.from || '廠商')}</span>
-        <span class="etime">回信</span>
+  const replyEmailsHtml = replies.map(rep => {
+    const supplier = rep.supplier_id || '';
+    const info = Object.values(supplierMap).find(v => v.name.includes(supplier.replace('SUP-', ''))) || null;
+    return `
+      <div class="email">
+        <div class="efrom">
+          <span>📥 From: ${escapeHtml(rep.supplier_id || rep.from || '廠商')}</span>
+          <span class="etime">回信</span>
+        </div>
+        <div class="esub">Re:【RFQ】報價</div>
+        <div class="ebody" style="font-size:11px">
+          ${rep.price_twd ? `單件加工費：<b>NT$ ${rep.price_twd}</b><br>` : ''}
+          ${rep.lead_time_days ? `交期：<b>${rep.lead_time_days} 天</b><br>` : ''}
+          ${rep.anti_static_capable !== undefined ? (rep.anti_static_capable ? '✓ 有 ESD-S20.20 認證' : '✗ 無 ESD 認證') : ''}
+        </div>
       </div>
-      <div class="esub">Re: 報價 - ${rep.supplier_id || ''}</div>
-      <div class="ebody">
-        ${rep.price_twd ? `單價 NT$ ${rep.price_twd}<br>` : ''}
-        ${rep.lead_time_days ? `交期 ${rep.lead_time_days} 天<br>` : ''}
-        ${rep.anti_static_capable !== undefined ? (rep.anti_static_capable ? '✓ 有 ESD' : '✗ 無 ESD') : ''}
-      </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 
-  body.innerHTML = sentEmails + repliesHtml;
+  body.innerHTML = sentEmailsHtml + replyEmailsHtml;
 }
 
 // ─── 主 refresh：fetch order + inbox，決定 scene + 渲染 ───
@@ -1819,22 +1920,30 @@ async function refreshLiveScenes() {
     _latestOrder = orderR.status === 'fulfilled' && orderR.value && !orderR.value.error && orderR.value.order_id ? orderR.value : null;
     _latestInbox = inboxR.status === 'fulfilled' && inboxR.value && !inboxR.value.error && inboxR.value.from ? inboxR.value : null;
 
-    // 拿最新 tool_call 對應 scene
+    // 掃 events 找 agent 走到最遠的 stage（scene 只前進、不倒退）
     const sessionR = await fetch('/api/agent-session').then(r => r.json()).catch(() => ({}));
     const events = sessionR.events || [];
+    let maxStageIdx = -1;
     let latestSkill = null;
-    for (let i = events.length - 1; i >= 0; i--) {
-      const ev = events[i];
+    for (const ev of events) {
       if (ev.role === 'tool_call' && ev.text) {
-        const m = (typeof ev.text === 'string' ? ev.text : '').match(/skills\/([a-z_]+)\/cli\.sh/);
-        if (m) { latestSkill = m[1]; break; }
+        const cmd = extractCommand(ev.text);
+        const skill = parseSkillFromCommand(cmd);
+        if (!skill) continue;
+        latestSkill = skill;
+        const scene = SKILL_TO_SCENE[skill];
+        if (scene) {
+          const idx = STAGE_ORDER.indexOf(scene);
+          if (idx > maxStageIdx) maxStageIdx = idx;
+        }
       }
     }
-    const sceneName = SKILL_TO_SCENE[latestSkill] || _currentScene;
+    const sceneName = maxStageIdx >= 0 ? STAGE_ORDER[maxStageIdx] : _currentScene;
 
     // 渲染（即使 scene 沒變，內容可能要 refresh）
     renderInboxScene(_latestInbox, _latestOrder);
     renderEngineerScene(_latestOrder);
+    renderHistoryScene(_latestOrder);
     renderPlannerScene(_latestOrder);
     renderSupplierScene(_latestOrder);
 

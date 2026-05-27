@@ -14,30 +14,51 @@ GatherRoller 公司 email = `s778906@gmail.com`，**所有客戶詢價跟廠商�
 
 ## ⛔ 業務模型（搞錯這個會整個 demo 廢掉）
 
-**GatherRoller 是橡膠輪「組裝廠」，不是賣鐵輪、也不是表面處理廠**。我的客戶買的是「**成品包膠輪**」（finished coated rubber roller）。
+**GatherRoller 是橡膠輪「組裝廠 + 包膠專家」**。客戶買的是「**成品包膠輪**」。
 
-成品 = `鐵輪本體` + `表面處理` + `自家包膠 / 組裝`：
+成品 = `鐵輪本體` + `鐵輪表面處理（外發）` + `自家包膠 + 組裝`：
 
 | 階段 | 誰做 | 怎麼來 |
 |---|---|---|
-| ① 鐵輪本體 | **採購**自鐵輪廠 SUP-IRON-001（金鋼鐵輪製造） | 固定價 NT$650/隻、長期合作、**不用 RFQ 比價** |
-| ② 表面處理 | **外發**給 3 家表面處理代工廠（SUP-001/002/003） | **這個才要 RFQ 3 家比價**！去銳角、毛邊、抗靜電處理 |
-| ③ 包膠 + 組裝 | 自家 in-house 產線 | 矽膠包覆 + 軸承 + 端蓋組裝 + QC |
+| ① 鐵輪本體 | **採購**自鐵輪廠 SUP-IRON-001（金鋼鐵輪製造） | 固定價 NT$650/隻、長期合作、不用 RFQ 比價 |
+| ② **鐵輪表面處理** | **外發**給 3 家表面處理代工廠 SUP-001/002/003 | **這個才要 RFQ 3 家比價**！去銳角、毛邊、ESD 導電基底 |
+| ③ 矽膠包膠 + 組裝 + QC | 桐聚自家 in-house 產線 | 矽膠塗覆（含 ESD 抗靜電配方）、軸承、端蓋、檢驗 |
 
-### 🔥 RFQ 給代工廠到底要問什麼
+### 🔥 為什麼要發 RFQ？發給誰？問什麼？
 
-**不是**把客戶整張訂單轉發。**是**問代工廠：「我有 N 隻鐵輪本體，要做表面處理，你報多少錢？」
+**目的**：客戶下單後，桐聚採購鐵輪本體（價固定），**核心採購決定 = 表面處理外發誰做**。3 家代工廠（全鋼/大同/順興）處理**鐵材表面**（去銳角、毛邊、ESD 導電基底），**不碰膠面**。但每家**價格 / 交期 / 是否有 ESD 認證**不同 — agent 要替老闆比 3 家。
 
-正確 RFQ body 內容：
-- 數量（=客戶訂單數量）
-- **鐵輪本體規格**（外徑、總長、材質 S45C，從工程圖讀的）
-- **表面處理需求**（去銳角、毛邊；客戶端是 PCB 廠的話加 ESD 抗靜電認證）
-- **附件**：鐵輪本體圖紙（不是成品圖）
-- 請對方回：單件加工費 / 交期 / 是否有 ESD 認證 / 良率
+### ⚠️ RFQ body 寫法：只寫**鐵材表面**相關，不寫膠的事
 
-❌ 錯誤 RFQ body（agent 之前犯過）：「請貴司報價成品矽膠包膠輪 500 隻」— 代工廠不做包膠、也不會報成品價，他們會傻眼。
+**廠商處理鐵材表面、不碰矽膠**。所以 Shore A 40（膠的硬度）跟他們無關、**RFQ 不要列**。
 
-✅ 正確 RFQ body：「請貴司針對下列鐵輪表面處理報價：500 隻、S45C 外徑 50mm × 長 732mm，需 ESD 抗靜電處理...」
+✅ 正確 RFQ body：
+- 數量
+- **鐵輪本體規格**（材質 S45C、外徑、總長 — 從工程圖讀）
+- **鐵材表面處理需求**：
+  - 去銳角、毛邊（拋光至特定粗糙度）
+  - 若客戶為 PCB 廠：**鐵材表面需具 ESD 導電性**（後段桐聚 ESD 矽膠包覆共同達成 ESD-S20.20）
+- **附件**：鐵輪本體圖紙
+- 請對方只回 **2 件事**：(1) **單件加工費** (2) **交期**
+  - 是否有 ESD 認證可以順便問（直接決定能否承接 PCB 單）
+
+❌ 錯誤（之前犯過）：
+- 「Shore A 40」— 那是膠的硬度，供應商看不懂為何要列
+- 「矽膠包覆後需具抗靜電性能」— 矽膠是桐聚 in-house 做的、不是供應商的事
+- 「請報價成品矽膠包膠輪」— 供應商沒做包膠
+- ❌ **不要問良率** — 良率是桐聚內部依歷史出貨經驗累積的數據（在 suppliers.json 裡），不問供應商，問了反而沒參考價值（廠商自報良率都吹高）
+
+### LINE 通知老闆時要講清楚
+
+我 push LINE gate-pre-rfq 給老闆時，summary 必須明確包含：
+
+1. **訂單摘要**：客戶 / 產品 / 數量 / 建議單價 / 總價 / 最快交期
+2. **要外發什麼**：「🔧 鐵輪表面處理 × N 隻、規格 X、需求 Y」
+3. **將寄給誰**：3 家表面處理代工廠名稱 + 聯絡人 + email（從 suppliers.json 讀）
+
+**這 3 段是強制**。老闆要知道：「我要外發什麼處理、寄給誰、寄了之後等什麼回信」。
+
+(注意：line_notify skill 看到 order_id 會**自動從 order 構這份 summary**，agent 只要帶 order_id 就好。)
 
 ---
 
@@ -135,7 +156,14 @@ inbox JSON 已寫到 /sandbox/.openclaw/workspace/data/inbox/74010.json。
 ```
 
 我從訊息直接拿到 **uid / from_email / subject / drawing_attachment_path** — 不用再 poll inbox。直接：
-1. order_store create {customer:{name:fromName, email:fromEmail}, incoming:{email_subject, drawing_attachment_path}}
+
+1. **order_store create**（注意：JSON 必須帶 `"action":"create"` ！別忘了）：
+   ```bash
+   printf '%s' '{"action":"create","customer":{"name":"Sunny Liao","email":"sunnxebusiness@gmail.com"},"incoming":{"email_subject":"...","drawing_attachment_path":"/sandbox/.../incoming/74xxx-xx.pdf"}}' \
+     | bash /sandbox/.openclaw/workspace/skills/order_store/cli.sh
+   ```
+   （skill 現在有自動推斷 action 的 fallback，但**還是要顯式帶**避免歧義）
+
 2. 後面照情境 A 標準流程跑下去（read_drawing → get_history_quote → check_schedule → calc_cost → line_notify gate-pre-rfq）
 
 **動作**（auto-writeback 後省一半步驟）：
@@ -245,7 +273,7 @@ cat > /tmp/rfq-sup001.json <<'EOF'
 {
   "to": "sunny.liao@gatherease.ai",
   "subject": "【RFQ-QUO-2026-0002】鐵輪表面處理外發 × 500 - 全鋼表處",
-  "body": "陳廠長 您好，\n\n本案為客戶詢價 PCB 產線用矽膠抗靜電包膠輪 500 隻，桐聚採購鐵輪本體後欲外發貴司做表面處理，請貴司就下列規格報價：\n\n[案件資訊]\n• 數量：500 隻\n• 鐵輪本體：S45C 碳鋼，外徑 50mm (+0.25/-0.00)，總長 732mm，軸間距 665mm\n• 表面處理需求：去銳角、毛邊處理\n• 客戶端規格：PCB / 光電面板產線使用，需具備抗靜電 ESD-S20.20 或同等認證（若貴司無此認證請註明，仍歡迎報價供參考）\n• 良率要求：≥ 95%\n\n[請於三個工作天內回覆]\n• 單件加工費 (NT$/隻)\n• 交期 (工作天)\n• 是否具備 ESD 認證\n• 預估良率\n\n圖紙見附件（鐵輪本體規格圖）。\n\nGatherRoller 桐聚科技 敬上",
+  "body": "陳廠長 您好，\n\n桐聚科技針對下列訂單欲外發鐵輪表面處理，請貴司報價：\n\n[加工項目]\n• 品項：鐵輪本體表面處理（不含矽膠包覆，包膠由桐聚自家做）\n• 數量：500 隻\n• 鐵輪本體：S45C 碳鋼，外徑 50mm (+0.25/-0.00)，總長 732mm，軸間距 665mm\n\n[鐵材表面處理需求]\n• 去銳角、毛邊處理\n• 客戶端為 PCB / 光電面板產線，鐵材表面需具 ESD 導電基底（與桐聚後段 ESD 矽膠包覆共同達成 ESD-S20.20 規範）\n\n[後段加工（桐聚自家做、不在此 RFQ 範圍）]\n• 矽膠包覆（含 ESD 抗靜電配方）+ 軸承組裝 + 端蓋 + QC\n\n[請於三個工作天內回覆 2 項]\n1. 單件加工費 NT$/隻\n2. 交期（工作天）\n\n（若貴司具備 ESD-S20.20 認證請順便註明，決定是否能承接此 PCB 案）\n\n圖紙見附件（鐵輪本體規格圖、非成品圖）。\n\nGatherRoller 桐聚科技 敬上",
   "attachments": [{"path": "/sandbox/.openclaw/workspace/data/incoming/74011-昕叡電子工程圖.pdf", "filename": "drawing.pdf"}]
 }
 EOF
