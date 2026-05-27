@@ -373,7 +373,7 @@ gatherease-quote-agent/
 
 ## Demo 影片
 
-📹 **3 分鐘 demo 影片**：[上傳後填入 YouTube 連結]
+📹 **3 分鐘 demo 影片**：(https://youtu.be/aM2bWkP4HjM?si=-zS7L8Z2EYRVUksC)
 
 **影片內 5 個 wow 鏡頭**：
 
