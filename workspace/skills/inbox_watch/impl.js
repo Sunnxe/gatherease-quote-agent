@@ -11,10 +11,117 @@
 const fs = require('fs/promises');
 const fsSync = require('fs');
 const path = require('path');
+const { writebackToOrder, findOrdersDir } = require('../_lib/order_writeback');
 
 const SKILL_DIR = __dirname;
 const WORKSPACE_DIR = path.resolve(SKILL_DIR, '..', '..');
 const SUPPLIERS_JSON = path.join(WORKSPACE_DIR, 'data', 'suppliers.json');
+
+// ─── Supplier reply parser (regex 抓 email body 真實報價) ───
+// 3 家代工廠 email → supplier_id 對應
+const SUPPLIER_BY_EMAIL = {
+  'sunny.liao@gatherease.ai':  { id: 'SUP-001', name: '全鋼表處' },
+  'gathereasebot@gmail.com':   { id: 'SUP-002', name: '大同精密表面' },
+  'xpert.back.work@gmail.com': { id: 'SUP-003', name: '順興電鍍工業' }
+};
+
+function parseSupplierReply(body) {
+  const out = {};
+  // 單件加工費 — 試多個 pattern
+  const pricePatterns = [
+    /單件加工費[:：]?\s*NT\$?\s*([\d,]+)/i,
+    /加工費[:：]?\s*NT\$?\s*([\d,]+)/i,
+    /Unit\s+Processing\s+Fee[^\d]*([\d,]+)/i,
+    /NT\$?\s*([\d,]+)\s*\/\s*(?:隻|pc)/i,
+    /單價[:：]?\s*NT?\$?\s*([\d,]+)/i,
+  ];
+  for (const p of pricePatterns) {
+    const m = body.match(p);
+    if (m) {
+      const n = parseInt(m[1].replace(/,/g, ''), 10);
+      if (n >= 100 && n <= 9999) { out.unit_price_twd = n; break; }
+    }
+  }
+  // 交期 (天)
+  const leadPatterns = [
+    /交期[:：]?\s*(\d+)\s*(?:個)?工作?天/,
+    /(\d+)\s*個工作天/,
+    /(\d+)\s*天\s*(?:交期|內)/,
+    /Lead\s*Time[^\d]*([\d]+)/i
+  ];
+  for (const p of leadPatterns) {
+    const m = body.match(p);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (n >= 1 && n <= 90) { out.lead_time_days = n; break; }
+    }
+  }
+  // ESD 認證
+  if (/✅.{0,40}ESD|具備.{0,30}ESD-?S20\.20|ESD-?S20\.20.{0,30}認證/i.test(body)) {
+    out.anti_static_capable = true;
+  } else if (/(?:未取得|未具備|無|沒有|尚未).{0,30}ESD/i.test(body)) {
+    out.anti_static_capable = false;
+  }
+  return out;
+}
+
+// 找最新一張還在等廠商回信的 order
+function findMatchingOrder() {
+  try {
+    const ordersDir = findOrdersDir();
+    if (!fsSync.existsSync(ordersDir)) return null;
+    const files = fsSync.readdirSync(ordersDir)
+      .filter(f => /^QUO-\d{4}-\d{4}\.json$/.test(f))
+      .sort().reverse();   // newest first
+    for (const f of files) {
+      try {
+        const order = JSON.parse(fsSync.readFileSync(path.join(ordersDir, f), 'utf8'));
+        // 還在等廠商回信、或 RFQ 已寄出的 order
+        if (['rfq_sent', 'awaiting_supplier_replies', 'awaiting_tradeoff'].includes(order.status)) {
+          return order.order_id;
+        }
+      } catch {}
+    }
+    return null;
+  } catch { return null; }
+}
+
+// 把 parsed reply append/merge 進 order.supplier_replies
+function appendReplyToOrder(order_id, supplier_id, supplier_name, parsed, fromEmail) {
+  if (!order_id || !supplier_id) return null;
+  try {
+    const p = path.join(findOrdersDir(), `${order_id}.json`);
+    if (!fsSync.existsSync(p)) return { ok: false, error: 'order not found' };
+    const order = JSON.parse(fsSync.readFileSync(p, 'utf8'));
+    if (!Array.isArray(order.supplier_replies)) order.supplier_replies = [];
+    // dedupe by supplier_id（若已存在就 replace）
+    const idx = order.supplier_replies.findIndex(r => r.supplier_id === supplier_id);
+    const entry = {
+      supplier_id,
+      name: supplier_name,
+      from_email: fromEmail,
+      ...parsed,
+      parsed_at: new Date().toISOString()
+    };
+    if (idx >= 0) order.supplier_replies[idx] = entry;
+    else order.supplier_replies.push(entry);
+
+    if (!Array.isArray(order.audit_trail)) order.audit_trail = [];
+    order.audit_trail.push({
+      ts: new Date().toISOString(),
+      level: 'INFO',
+      msg: `supplier reply parsed: ${supplier_name} unit=${parsed.unit_price_twd ?? 'n/a'} lead=${parsed.lead_time_days ?? 'n/a'}`,
+      skill: 'inbox_watch'
+    });
+    order.updated_at = new Date().toISOString();
+    const tmp = p + '.tmp.' + process.pid;
+    fsSync.writeFileSync(tmp, JSON.stringify(order, null, 2));
+    fsSync.renameSync(tmp, p);
+    return { ok: true, order_id, supplier_id, supplier_replies_count: order.supplier_replies.length };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
 
 const { ImapFlow } = require('imapflow');
 const { simpleParser } = require('mailparser');
@@ -188,13 +295,16 @@ async function readInboxFiles({ mode, order_id, sender_contains, subject_contain
     // mode filter（同直連邏輯）
     const subject = msg.subject || '';
     const fromEmail = (msg.from_email || '').toLowerCase();
+    // supplier_reply 偵測：subject Re:【RFQ 或 from 是 3 家代工廠 email
+    const isSupplierReply = /^(re|fwd?):\s*【?\s*\[?RFQ/i.test(subject)
+                          || !!SUPPLIER_BY_EMAIL[fromEmail];
     if (mode === 'new_inquiry') {
       const hasInquiryKw = /詢價|RFQ|Quote\s*Request|Inquiry/i.test(subject);
       const hasPdf = (msg.attachments || []).some(a => /pdf/i.test(a.content_type || ''));
-      if (!(hasInquiryKw && hasPdf)) continue;
+      // 排除 supplier reply（其 subject 也有 RFQ，但 Re: 開頭）
+      if (!hasInquiryKw || !hasPdf || isSupplierReply) continue;
     } else if (mode === 'supplier_reply') {
-      const isSup = /supplier-/i.test(fromEmail) || msg.matched_supplier;
-      if (!isSup) continue;
+      if (!isSupplierReply) continue;
     }
     if (sender_contains && !fromEmail.includes(sender_contains.toLowerCase())) continue;
     if (subject_contains && !subject.toLowerCase().includes(subject_contains.toLowerCase())) continue;
@@ -224,6 +334,29 @@ async function main() {
   const bridgeMode = detectBridgeMode();
   if (bridgeMode === 'outbox') {
     const msgs = await readInboxFiles({ mode, order_id, sender_contains, subject_contains, max_messages });
+
+    // ⚡ Auto-parse supplier replies + writeback 到 order
+    // 不再讓 agent 手動解析 — 直接 regex 抓 price/lead/ESD 寫進 order.supplier_replies
+    const parsedReplies = [];
+    const targetOrderId = order_id || findMatchingOrder();
+    for (const m of msgs) {
+      const fromEmail = (m.from_email || '').toLowerCase();
+      const supplierInfo = SUPPLIER_BY_EMAIL[fromEmail];
+      if (!supplierInfo) continue;   // 不是 3 家代工廠之一就 skip auto-parse
+      const body = m.body_text_preview || '';
+      const parsed = parseSupplierReply(body);
+      if (parsed.unit_price_twd != null || parsed.lead_time_days != null) {
+        const wb = appendReplyToOrder(targetOrderId, supplierInfo.id, supplierInfo.name, parsed, fromEmail);
+        parsedReplies.push({
+          uid: m.uid,
+          supplier_id: supplierInfo.id,
+          supplier_name: supplierInfo.name,
+          parsed,
+          writeback: wb
+        });
+      }
+    }
+
     // 標記 consumed
     if (mark_seen) {
       const INBOX_DIR = path.join(WORKSPACE_DIR, 'data', 'inbox');
@@ -239,8 +372,9 @@ async function main() {
       status: 'ok',
       bridge_mode: 'outbox',
       mode,
-      order_id: order_id || null,
+      order_id: targetOrderId || null,
       fetched_count: msgs.length,
+      parsed_supplier_replies: parsedReplies,   // 新欄位 — agent 可看 auto-parse 結果
       messages: msgs.map(({ _inbox_file, ...rest }) => rest),
       polled_at: new Date().toISOString()
     }));

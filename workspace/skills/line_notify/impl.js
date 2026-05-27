@@ -94,19 +94,63 @@ function buildSummaryFromOrder(orderId, gate) {
     }
 
     if (gate === 'gate-2-tradeoff-decision') {
-      const cmp = order.comparison || {};
+      // ⚡ 不用 order.comparison.trade_off_table（可能 stale），改用 order.supplier_replies 即時重算
+      const replies = order.supplier_replies || [];
+      let allSuppliers = [];
+      try {
+        const s = JSON.parse(fsSync.readFileSync(SUPPLIERS_FILE, 'utf8'));
+        allSuppliers = (s.suppliers || []).filter(x => x.category === 'surface-treatment-vendor');
+      } catch {}
+
+      // 合併：用 reply 真實值覆蓋 suppliers.json 標準值
+      const merged = allSuppliers.map(sup => {
+        const rep = replies.find(r => r.supplier_id === sup.id) || {};
+        const price = rep.unit_price_twd ?? rep.price_twd ?? sup.pricing.unit_price_twd;
+        const lead  = rep.lead_time_days ?? sup.lead_time_days;
+        const anti  = rep.anti_static_capable ?? sup.quality.anti_static_capable;
+        return {
+          name: sup.name, supplier_id: sup.id,
+          price_twd: price,
+          lead_time_days: lead,
+          anti_static: anti,
+          yield_rate_pct: rep.yield_rate_pct ?? sup.quality.yield_rate_pct,
+          from_reply: rep.unit_price_twd != null || rep.price_twd != null
+        };
+      });
+      // sort: ESD符合 + 低交期 + 低價 → 簡易 ranked
+      const customerNeedsESD = order.engineering_read?.quality_requirements?.anti_static_required;
+      const ranked = merged.slice().sort((a, b) => {
+        if (customerNeedsESD) {
+          if (a.anti_static !== b.anti_static) return a.anti_static ? -1 : 1;
+        }
+        // 同 anti-static 則交期短的優先、再來價低的
+        if (a.lead_time_days !== b.lead_time_days) return a.lead_time_days - b.lead_time_days;
+        return a.price_twd - b.price_twd;
+      });
+
+      // 重畫 trade-off table (跟 compare_suppliers 一樣格式但用最新數字)
+      const tableLines = ranked.map((r, i) => {
+        const tag = i === 0 ? '🏆' : (customerNeedsESD && !r.anti_static ? '❌' : '  ');
+        return `${tag} ${r.name}：$${r.price_twd}/件、${r.lead_time_days}天、良率${r.yield_rate_pct}%、${r.anti_static ? 'ESD✓' : 'ESD✗'}`;
+      });
+
+      const winner = ranked[0];
       const lines = [
-        `⚖️ 多維權衡`,
+        `⚖️ 多維權衡 · 廠商比價`,
         ``,
-        cmp.recommendation?.headline || 'AI 推薦中...',
-        `理由：${cmp.recommendation?.one_liner || '-'}`,
+        `🏆 AI 推薦：${winner.name}`,
+        `理由：${winner.anti_static ? '✅ 有 ESD 認證' : ''}${winner.lead_time_days <= 5 ? '、✅ 交期最短' : ''}`,
         ``,
-        `完整對比：`,
-        cmp.trade_off_table || '-',
+        `三家報價（${replies.length > 0 ? '本案實際報價' : 'suppliers.json 預設'}）：`,
+        ...tableLines,
+        ``,
+        '老闆請選擇：'
       ];
-      const strat = cmp.strategies?.[0];
+      // 若 compare_suppliers 有寫策略，附上
+      const strat = order.comparison?.strategies?.[0];
       if (strat) {
-        lines.push('', strat.headline || '', strat.rationale?.split('\n').slice(0, 4).join('\n') || '');
+        lines.push('', `💡 AI 策略：${strat.headline}`,
+                       strat.rationale?.split('\n').slice(0, 3).join('\n') || '');
       }
       return lines.join('\n');
     }
