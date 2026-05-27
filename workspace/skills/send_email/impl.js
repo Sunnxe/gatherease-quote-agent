@@ -351,6 +351,41 @@ async function main() {
   const bridgeMode = detectBridgeMode();
   if (bridgeMode === 'outbox') {
     const { id, file } = writeOutbox(input);
+
+    // Auto-writeback：如果是寄報價單給客戶（附件含 quote-XXX.pdf）→ 更新 order
+    const isCustomerQuote = Array.isArray(attachments) && attachments.some(a => {
+      const p = (typeof a === 'string' ? a : a?.path) || '';
+      return /quote-QUO-\d{4}-\d{4}\.pdf$/.test(p);
+    });
+    let writebackResult = null;
+    if (isCustomerQuote) {
+      try {
+        const { writebackToOrder } = require('../_lib/order_writeback');
+        // 從 PDF 路徑抓 order_id
+        const att = attachments[0];
+        const pdfPath = (typeof att === 'string' ? att : att?.path) || '';
+        const m = pdfPath.match(/QUO-\d{4}-\d{4}/);
+        if (m) {
+          const orderId = m[0];
+          writebackResult = writebackToOrder({
+            order_id: orderId,
+            patch: {
+              sent_to_customer_at: new Date().toISOString(),
+              status: 'quote_sent'
+            },
+            audit: {
+              level: 'INFO',
+              msg: `report sent to customer: ${Array.isArray(to) ? to.join(',') : to}`,
+              skill: 'send_email',
+              outbox_id: id
+            }
+          });
+        }
+      } catch (e) {
+        // writeback 失敗不影響主流程
+      }
+    }
+
     process.stdout.write(JSON.stringify({
       status: 'queued',
       bridge_mode: 'outbox',
@@ -358,8 +393,9 @@ async function main() {
       outbox_file: file,
       to: Array.isArray(to) ? to : [to],
       subject,
+      writeback: writebackResult,
       queued_at: new Date().toISOString(),
-      note: 'host email-bridge.js 監看 outbox，真寄成功會回填 sent_at/message_id 到此 JSON'
+      note: 'host email-bridge.js 監看 outbox，真寄成功會回填 sent_at/message_id 到此 JSON' + (writebackResult?.ok ? '（已 auto-writeback 報價已寄出狀態到 order）' : '')
     }));
     return;
   }

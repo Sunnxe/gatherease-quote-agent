@@ -13,9 +13,44 @@
 const fs = require('fs/promises');
 const fsSync = require('fs');
 const path = require('path');
+const { writebackToOrder, findOrdersDir } = require('../_lib/order_writeback');
 
 const SKILL_DIR = __dirname;
 const WORKSPACE_DIR = path.resolve(SKILL_DIR, '..', '..');
+
+// 從 order JSON 自動拉產生 PDF 需要的欄位（agent 只要帶 order_id 就好）
+function loadOrderForPdf(orderId) {
+  try {
+    const p = path.join(findOrdersDir(), `${orderId}.json`);
+    if (!fsSync.existsSync(p)) return null;
+    const order = JSON.parse(fsSync.readFileSync(p, 'utf8'));
+    const cb = order.cost_baseline || order.final_cost || {};
+    const er = order.engineering_read || {};
+    const sc = order.schedule_check || {};
+    const cmp = order.comparison || {};
+    // 找老闆選的 supplier 名稱（從 comparison 或 audit_trail）
+    let supplierName = null;
+    const stsAudit = (order.audit_trail || []).filter(a => a.gate === 'gate-2-tradeoff-decision' || a.chosen_supplier_id).slice(-1)[0];
+    if (stsAudit?.chosen_supplier_id && cmp?.ranked) {
+      const found = cmp.ranked.find(r => r.supplier_id === stsAudit.chosen_supplier_id);
+      if (found) supplierName = found.name;
+    }
+    if (!supplierName) supplierName = cmp?.recommendation?.name || null;
+
+    return {
+      customer_name:  order.customer?.name || null,
+      customer_email: order.customer?.email || order.customer?.contact_email || null,
+      product_name:   er.product_name_zh || er.product_id || null,
+      qty:            cb.qty || sc.qty || null,
+      unit_price_twd: cb.suggested_unit_price_twd || null,
+      total_twd:      cb.suggested_revenue_twd || (cb.suggested_unit_price_twd && cb.qty ? cb.suggested_unit_price_twd * cb.qty : null),
+      lead_days:      sc.total_lead_time_days || null,
+      supplier_choice: supplierName
+    };
+  } catch (e) {
+    return null;
+  }
+}
 
 async function readStdin() {
   return new Promise((resolve, reject) => {
@@ -84,7 +119,7 @@ function findCjkBoldPath() {
 
 async function main() {
   const input = await readStdin();
-  const {
+  let {
     order_id,
     customer_name,
     customer_email,
@@ -100,10 +135,22 @@ async function main() {
   } = input;
 
   if (!order_id) throw new Error('order_id required');
-  if (!customer_name) throw new Error('customer_name required');
-  if (!product_name) throw new Error('product_name required');
-  if (!Number.isFinite(qty) || qty <= 0) throw new Error('qty must be > 0');
-  if (!Number.isFinite(unit_price_twd) || unit_price_twd <= 0) throw new Error('unit_price_twd must be > 0');
+
+  // 自動從 order 拉欄位（agent 只要帶 order_id）— 沒帶才從 order 補
+  const fromOrder = loadOrderForPdf(order_id) || {};
+  if (!customer_name)  customer_name  = fromOrder.customer_name;
+  if (!customer_email) customer_email = fromOrder.customer_email;
+  if (!product_name)   product_name   = fromOrder.product_name;
+  if (!qty)            qty            = fromOrder.qty;
+  if (!unit_price_twd) unit_price_twd = fromOrder.unit_price_twd;
+  if (!total_twd)      total_twd      = fromOrder.total_twd;
+  if (!lead_days)      lead_days      = fromOrder.lead_days;
+  if (!supplier_choice) supplier_choice = fromOrder.supplier_choice;
+
+  if (!customer_name) throw new Error('customer_name required (order 沒帶 customer.name、agent 也沒給)');
+  if (!product_name)  throw new Error('product_name required (order 沒 read_drawing 結果、agent 也沒給)');
+  if (!Number.isFinite(qty) || qty <= 0) throw new Error('qty must be > 0 (order 沒 cost_baseline.qty、agent 也沒給)');
+  if (!Number.isFinite(unit_price_twd) || unit_price_twd <= 0) throw new Error('unit_price_twd must be > 0 (order 沒 cost_baseline.suggested_unit_price、agent 也沒給)');
 
   const PDFDocument = require('pdfkit');
 
@@ -257,15 +304,39 @@ async function main() {
 
   const stat = await fs.stat(pdfPath);
 
+  // Auto-writeback：把 final_quote_pdf_path 寫進 order
+  const writebackResult = writebackToOrder({
+    order_id,
+    patch: {
+      final_quote_pdf_path: pdfPath,
+      final_cost: {
+        qty,
+        suggested_unit_price_twd: unit_price_twd,
+        suggested_revenue_twd: total_twd || (unit_price_twd * qty),
+        supplier_choice
+      },
+      status: 'awaiting_email_to_customer'
+    },
+    audit: {
+      level: 'INFO',
+      msg: `quote PDF generated: ${path.basename(pdfPath)}`,
+      skill: 'generate_quote_pdf',
+      pdf_size: stat.size,
+      password_protected: !!pwd
+    }
+  });
+
   process.stdout.write(JSON.stringify({
     status: 'generated',
     order_id,
+    writeback: writebackResult,
     pdf_path: pdfPath,
     output_format: 'pdf',
     size_bytes: stat.size,
     cjk_font_used: !!cjkRegular,
     password_protected: !!pwd,
-    user_password_hint: pwd ? `(${pwd.length} chars, agent 應告知客戶)` : null,
+    user_password_hint: pwd ? `開檔密碼 = order_id 後 4 碼` : null,
+    next_step: '請 call send_email to customer_email 並 attach 此 PDF；寄完 status 會自動變 quote_sent',
     generated_at: new Date().toISOString()
   }));
 }

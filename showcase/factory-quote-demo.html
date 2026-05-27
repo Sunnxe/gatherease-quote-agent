@@ -61,7 +61,7 @@
   }
 
   .stage{
-    display:grid;grid-template-columns:380px 1fr;gap:18px;align-items:start;
+    display:grid;grid-template-columns:480px 1fr;gap:20px;align-items:start;
   }
   @media(max-width:880px){.stage{grid-template-columns:1fr}}
 
@@ -73,7 +73,7 @@
   }
   .phone-screen{
     background:var(--line-bg);border-radius:22px;overflow:hidden;
-    height:640px;display:flex;flex-direction:column;position:relative;
+    height:780px;display:flex;flex-direction:column;position:relative;
   }
   /* supplier email overlay */
   .supplier-view{
@@ -129,6 +129,40 @@
   .eng-read td:first-child{color:var(--muted);width:34%}
   .eng-read .split{margin-top:6px;border-top:1px dashed var(--border);padding-top:6px;line-height:1.7}
   .eng-read .split b.buy{color:#7fb0ff} .eng-read .split b.out{color:#ff9a6a} .eng-read .split b.self{color:var(--nv-green-bright)}
+
+  /* ---------- MACRO STAGES PROGRESS BAR (top) ---------- */
+  .macro-stages{
+    display:flex;background:linear-gradient(180deg,#0e1a14,#0a120e);
+    border:1px solid var(--border);border-radius:14px;padding:18px 24px;margin-bottom:18px;
+    position:relative;align-items:flex-start;gap:0;
+  }
+  .macro-stage{
+    flex:1;text-align:center;position:relative;padding:4px 6px;
+  }
+  .macro-stage .dot{
+    width:38px;height:38px;border-radius:50%;background:#1a2535;border:2px solid #2c3e54;
+    margin:0 auto 8px;display:grid;place-items:center;color:#5a6878;font-size:15px;font-weight:800;
+    transition:.4s;font-family:'JetBrains Mono',monospace;position:relative;z-index:2;
+  }
+  .macro-stage.active .dot{
+    background:var(--nv-green);border-color:var(--nv-green-bright);color:#0a1400;
+    box-shadow:0 0 24px rgba(118,185,0,0.7);animation:msPulse 1.5s ease-in-out infinite;
+  }
+  @keyframes msPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}
+  .macro-stage.done .dot{
+    background:rgba(118,185,0,0.25);border-color:var(--nv-green);color:var(--nv-green-bright);
+  }
+  .macro-stage.done .dot::after{content:'✓';position:absolute;font-size:18px;color:var(--nv-green-bright)}
+  .macro-stage .label{font-size:11.5px;color:#9fb4d0;font-weight:600;line-height:1.3}
+  .macro-stage.active .label{color:var(--nv-green-bright);font-weight:800}
+  .macro-stage.done .label{color:#c4d4bc}
+  .macro-stage::after{
+    content:'';position:absolute;top:23px;left:calc(50% + 24px);width:calc(100% - 48px);height:3px;
+    background:#2c3e54;z-index:1;transition:.4s;
+  }
+  .macro-stage.done::after,
+  .macro-stage.active::after{background:var(--nv-green)}
+  .macro-stage:last-child::after{display:none}
 
   /* ---------- INBOX SCENE (new inquiry) ---------- */
   .inbox-scene{background:#f3f6fb}
@@ -538,6 +572,30 @@
     <div class="slogan">流程交給 AI，決策留給老闆</div>
   </header>
 
+  <!-- 5 步驟橫向時間軸 - 全 demo 流程概覽 -->
+  <div class="macro-stages" id="macroStages">
+    <div class="macro-stage" id="ms-0">
+      <div class="dot">1</div>
+      <div class="label">客戶詢價進來</div>
+    </div>
+    <div class="macro-stage" id="ms-1">
+      <div class="dot">2</div>
+      <div class="label">AI 工程判讀<br><span style="font-size:10px;opacity:.7">讀圖 + 排程 + 算成本</span></div>
+    </div>
+    <div class="macro-stage" id="ms-2">
+      <div class="dot">3</div>
+      <div class="label">AI 多廠商比價<br><span style="font-size:10px;opacity:.7">RFQ 寄出 + 回信整理</span></div>
+    </div>
+    <div class="macro-stage" id="ms-3">
+      <div class="dot">4</div>
+      <div class="label">老闆 LINE 簽核<br><span style="font-size:10px;opacity:.7">人在決策</span></div>
+    </div>
+    <div class="macro-stage" id="ms-4">
+      <div class="dot">5</div>
+      <div class="label">AI 加密報價送出<br><span style="font-size:10px;opacity:.7">PDF + Gmail</span></div>
+    </div>
+  </div>
+
   <div class="stage">
     <!-- LEFT: LINE phone -->
     <div class="phone">
@@ -552,15 +610,12 @@
         </div>
         <div class="chat" id="chat">
           <div class="empty" id="emptyChat">
-            <div style="font-size:34px;line-height:1;margin-bottom:14px;">📱</div>
-            <div style="font-weight:700;color:#3a4250;font-size:13px;margin-bottom:6px;">桐聚 AI 報價助手</div>
-            <div style="color:#5a6878;font-size:11.5px;line-height:1.5;margin-bottom:14px;">
-              客戶詢價進來 → 工程判讀 → 多廠商比價 → 老闆簽核 → 加密報價送出
+            <div style="font-size:42px;line-height:1;margin-bottom:18px;">📱</div>
+            <div style="font-weight:700;color:#3a4250;font-size:14px;margin-bottom:10px;">桐聚 AI 報價助手</div>
+            <div style="color:#5a6878;font-size:12px;line-height:1.6;margin-bottom:16px;text-align:center">
+              等客戶寄詢價進來，<br>agent 自主跑完整個報價流程<br>並推 LINE 給老闆簽核
             </div>
-            <div style="background:rgba(118,185,0,0.18);border:1px dashed rgba(118,185,0,0.5);border-radius:9px;padding:8px 11px;color:#3a6a00;font-size:11px;font-weight:600;line-height:1.5;">
-              ⏱ 老闆人工 ~9 hr<br>⚡ AI 自動 ~30 s
-            </div>
-            <div style="margin-top:18px;color:#9aacbf;font-size:10.5px;">按右側「▶ 播放 Demo」開始</div>
+            <div style="margin-top:18px;color:#9aacbf;font-size:10.5px;">↑ 跟著上方時間軸看 agent 進度</div>
           </div>
         </div>
 
@@ -1831,6 +1886,100 @@ function renderHistoryScene(order) {
   `;
 }
 
+// sys scene — generate_quote_pdf 跑完顯示報價單存檔 + 寄出
+function renderSysScene(order) {
+  const body = document.getElementById('sysBody');
+  if (!body) return;
+  const final = order?.final_cost || order?.cost_baseline || {};
+  const pdfPath = order?.final_quote_pdf_path;
+  const sentAt = order?.sent_to_customer_at;
+  const supplier = final.surface_treatment_supplier_used || null;
+  const customer = order?.customer || {};
+  const qty = final.qty || order?.cost_baseline?.qty || '-';
+
+  if (!pdfPath && !sentAt) {
+    body.innerHTML = `
+      <div class="sys-row">
+        <span class="k">📄 報價單 PDF</span>
+        <span class="v">⏳ 生成中...</span>
+      </div>
+      <div class="sys-row">
+        <span class="k">🔐 加密</span>
+        <span class="v">準備密碼保護</span>
+      </div>`;
+    return;
+  }
+  body.innerHTML = `
+    <div class="sys-row">
+      <span class="k">訂單編號</span>
+      <span class="v">${escapeHtml(order?.order_id || '-')}</span>
+    </div>
+    <div class="sys-row">
+      <span class="k">📄 報價單 PDF</span>
+      <span class="v">✓ ${pdfPath ? '已生成' : '生成中'}</span>
+    </div>
+    <div class="sys-row">
+      <span class="k">🔐 開檔密碼</span>
+      <span class="v">${order?.order_id?.slice(-4) || '****'}</span>
+    </div>
+    <div class="sys-row">
+      <span class="k">📊 報價單價</span>
+      <span class="v">NT$ ${(final.suggested_unit_price_twd || 0).toLocaleString()} × ${qty} 隻</span>
+    </div>
+    <div class="sys-row">
+      <span class="k">💰 總金額</span>
+      <span class="v">NT$ ${(final.suggested_revenue_twd || 0).toLocaleString()}</span>
+    </div>
+    ${supplier ? `
+    <div class="sys-row">
+      <span class="k">🏭 表面處理</span>
+      <span class="v">${escapeHtml(supplier.name || '-')}</span>
+    </div>` : ''}
+    <div class="sys-row">
+      <span class="k">📤 寄給客戶</span>
+      <span class="v">${escapeHtml(customer.email || customer.contact_email || '-')}</span>
+    </div>
+    ${sentAt ? `
+    <div class="sys-row">
+      <span class="k">✉️ 寄出時間</span>
+      <span class="v">${formatLocalTime(sentAt)}</span>
+    </div>` : ''}
+    <div class="sys-saved">✓ 訂單已存檔到系統</div>
+  `;
+}
+
+// 5 步驟橫向時間軸 — 同步顯示 agent 進度
+const STAGE_TO_MACRO = [0, 1, 1, 1, 2, 4];   // inbox→0, engineer/history/planner→1, supplier→2, sys→4
+const SIGNOFF_STATUSES = ['awaiting_rfq_approval', 'awaiting_tradeoff', 'awaiting_signoff'];
+
+function updateMacroStages(internalStageIdx, order) {
+  let baseMacro = internalStageIdx >= 0 ? STAGE_TO_MACRO[internalStageIdx] : -1;
+  let currentMacro = baseMacro;
+  // 老闆簽核狀態時 bump 到 macro 3
+  if (order?.status && SIGNOFF_STATUSES.includes(order.status)) {
+    currentMacro = Math.max(currentMacro, 3);
+  }
+  // sys stage 完成、客戶報價已寄出 → 全 5 完成
+  if (order?.sent_to_customer_at) {
+    currentMacro = 4;
+    // 全部標 done（不再有 active）
+    for (let i = 0; i <= 4; i++) {
+      const el = document.getElementById('ms-' + i);
+      if (!el) continue;
+      el.classList.remove('active');
+      el.classList.add('done');
+    }
+    return;
+  }
+  for (let i = 0; i <= 4; i++) {
+    const el = document.getElementById('ms-' + i);
+    if (!el) continue;
+    el.classList.remove('active', 'done');
+    if (i < currentMacro) el.classList.add('done');
+    else if (i === currentMacro) el.classList.add('active');
+  }
+}
+
 // supplier scene — 動態 title 區分「寄件給廠商」vs「廠商回信收件匣」
 function renderSupplierScene(order) {
   const body = document.getElementById('svBody');
@@ -1958,6 +2107,10 @@ async function refreshLiveScenes() {
     renderHistoryScene(_latestOrder);
     renderPlannerScene(_latestOrder);
     renderSupplierScene(_latestOrder);
+    renderSysScene(_latestOrder);
+
+    // 上方 5 步驟時間軸跟著 agent 進度走
+    updateMacroStages(_shownStageIdx, _latestOrder);
 
     // 切 scene
     if (sceneName) setScene(sceneName);

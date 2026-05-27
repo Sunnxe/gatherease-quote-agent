@@ -405,30 +405,33 @@ cat /tmp/rfq-sup001.json | bash /sandbox/.openclaw/workspace/skills/send_email/c
 
 ### 🟢 情境 E：老闆 LINE 簽「簽核並寄出」
 
-**動作**：
+**動作（auto-pull + auto-writeback 後超短）**：
 
 ```
-1. order_store get → 拿所有資料
-2. generate_quote_pdf {
-     order_id, customer_name, customer_email,
-     product_name, qty, unit_price_twd, total_twd,
-     lead_days, supplier_choice, terms, signed_by
-   } → 拿到 pdf_path
-3. send_email {
-     to: customer_email,
-     subject: "【報價單】" + product_name,
-     body: "...請見附件報價單...",
-     attachments: [{path: pdf_path, filename: "quote.pdf", content_type: "application/pdf"}]
+1. generate_quote_pdf {order_id}
+   ⚡ **只要 order_id**！skill 會自動從 order 拉：
+     • customer_name / customer_email (從 order.customer)
+     • product_name (從 engineering_read.product_name_zh)
+     • qty / unit_price_twd / total_twd (從 cost_baseline)
+     • lead_days (從 schedule_check)
+     • supplier_choice (從 comparison.ranked 老闆選的)
+   → auto-writeback final_quote_pdf_path + final_cost + status=awaiting_email_to_customer
+   → stdout slim: pdf_path / size_bytes / password_protected
+   ⛔ 不要 manual order_store update final_quote_pdf_path！
+
+2. send_email {
+     to: <order.customer.email>,
+     subject: "【報價單】" + product_name + " (" + order_id + ")",
+     body: "感謝詢價，附件為報價單 PDF（密碼為訂單編號後 4 碼）...",
+     attachments: [<step 1 pdf_path>]   ← 字串陣列也可、skill 會自動轉
    }
-4. order_store update {
-     patch: {
-       final_quote_pdf_path: pdf_path,
-       sent_to_customer_at: now,
-       status: "quoted_sent"
-     }
-   }
-5. 跟 user 講「✅ 報價單已寄出給客戶 ${customer_name}」
+   ⚡ send_email 偵測到附件含 quote-QUO-XXX-XXX.pdf → auto-writeback sent_to_customer_at + status=quote_sent
+   ⛔ 不要 manual order_store update sent_to_customer_at / status！
+
+3. 跟 user 講「✅ 報價單已寄出給客戶 ${customer_name}」
 ```
+
+**從 5 步剪到 3 步**，agent 不用手抄報價數字、不用更新訂單欄位 — 全自動。
 
 ---
 

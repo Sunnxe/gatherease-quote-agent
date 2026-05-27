@@ -440,7 +440,7 @@ app.get('/api/order/latest', async (req, res) => {
       } catch {
         return { exists: false, error: 'parse failed', raw_head: content.slice(0, 200) };
       }
-    }, 4000);
+    }, 1500);   // 1.5s — supplier 寄出/回信都靠這個欄位、要即時
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });
