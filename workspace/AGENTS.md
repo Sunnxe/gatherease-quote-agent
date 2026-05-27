@@ -499,15 +499,32 @@ NT$ 1700 / 隻
 
 **收到模式 b (純數字訊息或含數字訊息)**：
 
+譬如 user message 是「**單價改為1650 一隻 確定簽核並寄出**」這種混合「改價 + 簽核」訊息。
+
 ```
 1. 從 user message regex 抓單價數字（範圍 100~99999、整數）：
-   /(?:改成|改|new\s*price|NT\$?|單價|每隻|)\s*([\d,]+)/i
-   或最簡單：抓第一個 4 位數
-2. order_store update {order_id, patch: {manual_override_unit_price_twd: <number>}}
-3. 確認並走情境 E（generate_quote_pdf 會自動用這個 override 不是 calc_cost 算的）
-   ✅ 不用重算 calc_cost、不用 push 第二次 gate-3
-4. 直接 generate_quote_pdf {order_id} + send_email 給客戶
-5. 跟 user 講「✅ 採納廖老闆指定單價 NT$1,700/隻 寄出報價單」
+   /(?:改成|改為?|new\s*price|NT\$?|單價|每隻)\s*([\d,]+)/i
+   或：第一個 4 位數
+   → 譬如抓到 1650
+
+2. **必須**做 2 件事（兩個都做、缺一不可）：
+
+   a. order_store update {order_id, patch: {manual_override_unit_price_twd: 1650}}
+      ⚡ 這個欄位是 generate_quote_pdf 找的「老闆指定價」第一優先來源
+
+   b. order_store append_audit {order_id, entry: {gate: "gate-3-final-quote-signoff", choice: 0, action: "簽核並寄出", unit_price_twd: 1650, notes: "老闆 LINE 改價"}}
+      ⚡ 這是雙保險 — 即使 agent 漏寫 a、generate_quote_pdf 也會從 audit_trail 撿到 1650
+
+   ⛔ **絕對不要只寫 audit、不寫 manual_override**（之前犯過、PDF 用了 AI 1638 而不是老闆指定 1650）
+
+3. 直接 generate_quote_pdf {order_id}
+   ⚡ skill 會自動用 manual_override_unit_price_twd = 1650
+   ⚡ PDF 顯示「建議單價 NT$ 1,650 / 總價 = 1650 × qty」
+   ⚡ 不要重 call calc_cost（會被 calc_cost 的 1638 蓋掉）
+
+4. send_email 給客戶（附 PDF）→ skill 自動寫 sent_to_customer_at + status=quote_sent
+
+5. 跟 user 講「✅ 採納廖老闆指定單價 NT$1,650/隻 寄出報價單」
 ```
 
 **為什麼要支援這個**：實戰中老闆看到 AI 算的 NT$1,609 可能說「太低、給客戶 1,700」或「給長期客戶優惠改 1,500」— **agent 必須尊重老闆最後的數字**、不能堅持用 AI 算的。Audit trail 會記 `price_source: boss_override (LINE 老闆指定 NT$1700)`。

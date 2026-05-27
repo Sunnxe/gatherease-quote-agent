@@ -38,9 +38,25 @@ function loadOrderForPdf(orderId) {
     if (!supplierName) supplierName = cmp?.recommendation?.name || null;
 
     // ⚡ 老闆 LINE 簽核時打字改價、優先用那個數字
-    // order.manual_override_unit_price_twd 是 agent 在 [LINE_CB] 收到老闆打字後寫進去的
+    // 三個來源優先序：
+    // 1. order.manual_override_unit_price_twd（agent 顯式設的、最高優先）
+    // 2. audit_trail 最近一筆 gate-3 decision 有 unit_price_twd（agent 漏寫 manual_override 也救得回來）
+    // 3. cost_baseline.suggested_unit_price_twd（calc_cost 算的、AI 數字）
     const qty = cb.qty || sc.qty || null;
-    const override = order.manual_override_unit_price_twd;
+    let override = order.manual_override_unit_price_twd;
+    let overrideSource = 'manual_override_unit_price_twd';
+    if (!Number.isFinite(override) || override <= 0) {
+      // fallback：掃 audit_trail 找 gate-3 + unit_price_twd
+      const trail = order.audit_trail || [];
+      for (let i = trail.length - 1; i >= 0; i--) {
+        const a = trail[i];
+        if (a.gate === 'gate-3-final-quote-signoff' && Number.isFinite(a.unit_price_twd) && a.unit_price_twd > 0) {
+          override = a.unit_price_twd;
+          overrideSource = 'audit_trail gate-3';
+          break;
+        }
+      }
+    }
     const computedPrice = cb.suggested_unit_price_twd || null;
     const finalUnit = (Number.isFinite(override) && override > 0) ? override : computedPrice;
     const finalTotal = (finalUnit && qty) ? finalUnit * qty : (cb.suggested_revenue_twd || null);
@@ -56,7 +72,7 @@ function loadOrderForPdf(orderId) {
       supplier_choice: supplierName,
       // 給 audit trail 看的：用的是老闆 override 還是 AI 算的
       _price_source:   (Number.isFinite(override) && override > 0)
-        ? `boss_override (LINE 老闆指定 NT$${override})`
+        ? `boss_override · ${overrideSource} (NT$${override})`
         : `auto_calc (calc_cost NT$${computedPrice})`
     };
   } catch (e) {
