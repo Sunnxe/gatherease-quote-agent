@@ -43,6 +43,7 @@ function readChosenSupplierId(order_id) {
 }
 
 // 從 order.supplier_replies 拉特定廠商本次的真實報價（覆蓋 suppliers.json 標準值）
+// 容忍 flat schema 或 nested {parsed:{...}} schema
 function readSupplierReplyPrice(order_id, supplier_id) {
   if (!order_id || !supplier_id) return null;
   try {
@@ -51,7 +52,8 @@ function readSupplierReplyPrice(order_id, supplier_id) {
     const order = JSON.parse(fsSync.readFileSync(p, 'utf8'));
     const rep = (order.supplier_replies || []).find(r => r.supplier_id === supplier_id);
     if (!rep) return null;
-    return rep.unit_price_twd ?? rep.price_twd ?? null;
+    const nested = rep.parsed || {};
+    return rep.unit_price_twd ?? rep.price_twd ?? nested.unit_price_twd ?? nested.price_twd ?? null;
   } catch { return null; }
 }
 

@@ -128,28 +128,30 @@ async function main() {
 
   // ⚡ 用本次廠商真實回信的 price/lead/ESD 覆蓋 suppliers.json 標準值
   // suppliers.json 還是 source of truth for certifications/yield/notes 等不變欄
+  // 容忍兩種 schema：flat { unit_price_twd } 或 nested { parsed: { unit_price_twd } }
   const replyOverrides = loadReplyOverrides(order_id);
   const candidates = supplier_ids
     .map(id => suppliers.find(s => s.id === id))
     .filter(Boolean)
     .map(s => {
       const rep = replyOverrides[s.id] || {};
-      const price = rep.unit_price_twd ?? rep.price_twd ?? s.pricing.unit_price_twd;
-      const lead = rep.lead_time_days ?? s.lead_time_days;
-      const anti = rep.anti_static_capable ?? s.quality.anti_static_capable;
+      const p = rep.parsed || {};   // nested fallback
+      const price = rep.unit_price_twd ?? rep.price_twd ?? p.unit_price_twd ?? p.price_twd ?? s.pricing.unit_price_twd;
+      const lead = rep.lead_time_days ?? p.lead_time_days ?? s.lead_time_days;
+      const anti = rep.anti_static_capable ?? p.anti_static_capable ?? s.quality.anti_static_capable;
       return {
         supplier_id: s.id,
         name: s.name,
         price_twd: price,
         lead_time_days: lead,
-        yield_rate_pct: rep.yield_rate_pct ?? s.quality.yield_rate_pct,
+        yield_rate_pct: rep.yield_rate_pct ?? p.yield_rate_pct ?? s.quality.yield_rate_pct,
         anti_static: anti,
         certifications: s.quality.certifications || [],
         meets_lead_time: lead <= maxDays,
         meets_quality: !requiresAntiStatic || anti,
         notes: s.notes,
         // 透明性：表明資料來源（demo 觀眾可看出用的是 reply 還是 default）
-        _price_source: rep.unit_price_twd != null || rep.price_twd != null ? 'reply' : 'suppliers.json'
+        _price_source: (rep.unit_price_twd != null || rep.price_twd != null || p.unit_price_twd != null || p.price_twd != null) ? 'reply' : 'suppliers.json'
       };
     });
 

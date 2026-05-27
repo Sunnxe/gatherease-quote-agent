@@ -103,18 +103,20 @@ function buildSummaryFromOrder(orderId, gate) {
       } catch {}
 
       // 合併：用 reply 真實值覆蓋 suppliers.json 標準值
+      // 容忍 flat schema 或 nested {parsed:{...}} schema
       const merged = allSuppliers.map(sup => {
         const rep = replies.find(r => r.supplier_id === sup.id) || {};
-        const price = rep.unit_price_twd ?? rep.price_twd ?? sup.pricing.unit_price_twd;
-        const lead  = rep.lead_time_days ?? sup.lead_time_days;
-        const anti  = rep.anti_static_capable ?? sup.quality.anti_static_capable;
+        const np = rep.parsed || {};
+        const price = rep.unit_price_twd ?? rep.price_twd ?? np.unit_price_twd ?? np.price_twd ?? sup.pricing.unit_price_twd;
+        const lead  = rep.lead_time_days ?? np.lead_time_days ?? sup.lead_time_days;
+        const anti  = rep.anti_static_capable ?? np.anti_static_capable ?? sup.quality.anti_static_capable;
         return {
           name: sup.name, supplier_id: sup.id,
           price_twd: price,
           lead_time_days: lead,
           anti_static: anti,
-          yield_rate_pct: rep.yield_rate_pct ?? sup.quality.yield_rate_pct,
-          from_reply: rep.unit_price_twd != null || rep.price_twd != null
+          yield_rate_pct: rep.yield_rate_pct ?? np.yield_rate_pct ?? sup.quality.yield_rate_pct,
+          from_reply: (rep.unit_price_twd != null || rep.price_twd != null || np.unit_price_twd != null || np.price_twd != null)
         };
       });
       // sort: ESD符合 + 低交期 + 低價 → 簡易 ranked
