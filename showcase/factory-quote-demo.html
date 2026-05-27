@@ -130,6 +130,28 @@
   .eng-read .split{margin-top:6px;border-top:1px dashed var(--border);padding-top:6px;line-height:1.7}
   .eng-read .split b.buy{color:#7fb0ff} .eng-read .split b.out{color:#ff9a6a} .eng-read .split b.self{color:var(--nv-green-bright)}
 
+  /* ---------- TECH DIVIDER（agent 進度區 vs 治理佐證區 分界線）---------- */
+  .tech-divider{
+    display:flex;align-items:center;gap:12px;margin:6px 0 -4px;
+    color:#6a7a6a;font-size:10.5px;letter-spacing:2px;text-transform:uppercase;font-weight:600;
+  }
+  .tech-divider::before,.tech-divider::after{
+    content:'';flex:1;height:1px;background:linear-gradient(90deg,transparent,#2a3328,transparent);
+  }
+
+  /* OpenClaw / Sandbox Activity 緊湊版 — padding 砍小、字體縮小 */
+  .ocs-compact .body{padding:8px 12px;gap:5px}
+  .ocs-compact .row{font-size:11px;gap:6px;flex-wrap:wrap}
+  .ocs-compact .label{font-size:9px;min-width:62px}
+  .ocs-compact .val{font-size:11.5px}
+  .ocs-compact .chip{font-size:10px;padding:2px 7px}
+  .ocs-compact .skills{gap:3px}
+  .ocs-compact .skills .chip{font-size:13px;padding:2px 6px;cursor:default}
+  .ocs-compact .meta{font-size:9.5px}
+  .sa-panel-compact .sa-list{max-height:140px;overflow-y:auto}
+  .sa-panel-compact .ph{padding:8px 14px;font-size:11px}
+  .sa-panel-compact .sa-row{font-size:10.5px;padding:5px 8px}
+
   /* ---------- MACRO STAGES PROGRESS BAR (top) ---------- */
   .macro-stages{
     display:flex;background:linear-gradient(180deg,#0e1a14,#0a120e);
@@ -668,64 +690,7 @@
 
     <!-- RIGHT: governance -->
     <div class="gov">
-      <!-- OpenClaw Sandbox status (top, real OpenClaw + NemoClaw governance state)
-           Live data via /api/* fetched from demo-mirror-server.js;
-           static fallback shown when running off file:// -->
-      <div class="ocs" id="ocsPanel">
-        <div class="ph">
-          <span><span class="lobster">🦞</span>OpenClaw Sandbox · NemoClaw 治理層</span>
-          <span class="live" id="ocsLive"><span class="pulse"></span><span id="ocsLiveLabel">kernel-active</span></span>
-        </div>
-        <div class="body">
-          <div class="row">
-            <span class="label">SANDBOX</span>
-            <span class="val" id="ocsSandboxName">gatherease-quote-agent</span>
-            <span class="meta" id="ocsSandboxMeta">· OpenClaw v2026.5.18 · Node v22 · uptime 8h</span>
-          </div>
-          <div class="row">
-            <span class="label">LLM</span>
-            <span class="chip" id="ocsLlmName">Nemotron Super 120B</span>
-            <span class="meta" id="ocsLlmMeta">via integrate.api.nvidia.com · LLM tool-calling loop</span>
-          </div>
-          <div class="row">
-            <span class="label">SKILLS</span>
-            <div class="skills" id="ocsSkills">
-              <span class="chip skill" data-skill="order_store">📒 order_store</span>
-              <span class="chip skill" data-skill="inbox_watch">📥 inbox_watch</span>
-              <span class="chip skill" data-skill="read_drawing">📐 read_drawing</span>
-              <span class="chip skill" data-skill="get_history_quote">🔍 get_history_quote</span>
-              <span class="chip skill" data-skill="check_schedule">📅 check_schedule</span>
-              <span class="chip skill" data-skill="calc_cost">💰 calc_cost</span>
-              <span class="chip skill" data-skill="compare_suppliers">⚖️ compare_suppliers</span>
-              <span class="chip skill" data-skill="line_notify">📱 line_notify</span>
-              <span class="chip skill" data-skill="send_email">📧 send_email</span>
-              <span class="chip skill" data-skill="generate_quote_pdf">📄 generate_quote_pdf</span>
-            </div>
-            <span class="meta" id="ocsSkillsCount">· 10/10 ready</span>
-          </div>
-          <div class="row">
-            <span class="label">POLICY</span>
-            <span class="chip policy ver" id="ocsPolicyVer">v10</span>
-            <span class="policy-chips" id="ocsPolicies">
-              <span class="chip policy">line-messaging</span>
-              <span class="chip policy">gmail-smtp</span>
-              <span class="chip policy">gmail-imap</span>
-            </span>
-            <span class="meta">· seccomp + Landlock + netns 強制中</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Sandbox Activity · 真實 OpenClaw + NemoClaw log tail (agent 思考 / 治理事件) -->
-      <div class="sa-panel">
-        <div class="ph">
-          <span>🦞 Sandbox Activity · kernel governance + inference</span>
-          <span class="live"><span class="pulse"></span>live tail</span>
-        </div>
-        <div class="sa-list" id="sandboxActivity">
-          <div class="sa-empty">等 sandbox 活動... (mirror server 每 10 秒抓 nemoclaw logs)</div>
-        </div>
-      </div>
+      <!-- ⬆️ PRIMARY VIEW：Agent 進度 — 給觀眾看 agent 在做什麼 -->
 
       <!-- Agent Thinking · 真實 session transcript (LLM 內部 user/assistant/tool turns) -->
       <div class="at-panel">
@@ -789,6 +754,68 @@
           <span class="live" id="timelineLiveLabel"><span class="pulse"></span>live · /api/agent-session</span>
         </div>
         <div class="flow" id="flow"><div class="empty">等 agent 跑 skill 就會看到 timeline</div></div>
+      </div>
+
+      <!-- ⬇️ SECONDARY VIEW：技術佐證 — 給評審 / 工程觀眾看 NemoClaw governance 是真的 -->
+      <div class="tech-divider">
+        <span>技術佐證 · NemoClaw kernel governance</span>
+      </div>
+
+      <!-- OpenClaw Sandbox status — 緊湊版 -->
+      <div class="ocs ocs-compact" id="ocsPanel">
+        <div class="ph">
+          <span><span class="lobster">🦞</span>OpenClaw Sandbox · NemoClaw 治理層</span>
+          <span class="live" id="ocsLive"><span class="pulse"></span><span id="ocsLiveLabel">kernel-active</span></span>
+        </div>
+        <div class="body">
+          <div class="row">
+            <span class="label">SANDBOX</span>
+            <span class="val" id="ocsSandboxName">gatherease-quote-agent</span>
+            <span class="meta" id="ocsSandboxMeta">· OpenShell v0.0.44 · gateway healthy</span>
+          </div>
+          <div class="row">
+            <span class="label">LLM</span>
+            <span class="chip" id="ocsLlmName">Nemotron Super 120B</span>
+            <span class="meta" id="ocsLlmMeta">via NVIDIA NIM</span>
+          </div>
+          <div class="row">
+            <span class="label">SKILLS</span>
+            <div class="skills" id="ocsSkills">
+              <span class="chip skill" data-skill="order_store">📒</span>
+              <span class="chip skill" data-skill="inbox_watch">📥</span>
+              <span class="chip skill" data-skill="read_drawing">📐</span>
+              <span class="chip skill" data-skill="get_history_quote">🔍</span>
+              <span class="chip skill" data-skill="check_schedule">📅</span>
+              <span class="chip skill" data-skill="calc_cost">💰</span>
+              <span class="chip skill" data-skill="compare_suppliers">⚖️</span>
+              <span class="chip skill" data-skill="line_notify">📱</span>
+              <span class="chip skill" data-skill="send_email">📧</span>
+              <span class="chip skill" data-skill="generate_quote_pdf">📄</span>
+            </div>
+            <span class="meta" id="ocsSkillsCount">10/10 ready</span>
+          </div>
+          <div class="row">
+            <span class="label">POLICY</span>
+            <span class="chip policy ver" id="ocsPolicyVer">v10</span>
+            <span class="policy-chips" id="ocsPolicies">
+              <span class="chip policy">line-messaging</span>
+              <span class="chip policy">gmail-smtp</span>
+              <span class="chip policy">gmail-imap</span>
+            </span>
+            <span class="meta">· seccomp + Landlock + netns 強制中</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sandbox Activity log tail — 緊湊版 -->
+      <div class="sa-panel sa-panel-compact">
+        <div class="ph">
+          <span>🦞 Sandbox Activity · kernel governance log</span>
+          <span class="live"><span class="pulse"></span>live tail</span>
+        </div>
+        <div class="sa-list" id="sandboxActivity">
+          <div class="sa-empty">等 sandbox 活動... (mirror server 每 10 秒抓 nemoclaw logs)</div>
+        </div>
       </div>
     </div>
   </div>
