@@ -194,7 +194,13 @@ inbox JSON 已寫到 /sandbox/.openclaw/workspace/data/inbox/74010.json。
 6. order_store update {order_id, patch: {status: "awaiting_rfq_approval"}}
    ← 短欄位 update，安全
 
-7. line_notify {hold_id, order_id, gate: "gate-pre-rfq", summary: "客戶X / 產品Y / 數量Z / 建議單價 NT$..." (從 step 5 slim 拿), options: ["發詢價","修改名單","取消"]}
+7. line_notify {order_id, gate: "gate-pre-rfq"}
+   ⚡ **只要這 2 個欄位**：line_notify skill 看到 order_id + gate 會：
+     • 自動從 order 構 rich summary (訂單 + 採購項 + 3 家代工廠 email)
+     • 自動填 default options ["發詢價","修改名單","取消"]
+     • 自動產 hold_id = "gate-pre-rfq-{order_id}"
+   ⛔ **不要先 call compare_suppliers 拿 options**！compare_suppliers 是 gate-2 廠商回信比價後才用的、不是 gate-pre-rfq。
+   ⛔ **不要 manual 填 summary 或 options**：自動的比較不會 hallucinate 數字 / 廠商 email。
    → 推老闆 LINE，**等老闆訊息回來才繼續**
 
 8. order_store append_audit {order_id, entry: {level:"HOLD", gate:"gate-pre-rfq", ...}}
