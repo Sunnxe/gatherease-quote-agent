@@ -328,11 +328,64 @@ async function main() {
   }
 
   // 🔐 機密過濾：寄報價單給客戶時，body 不能漏內部資訊（毛利率/供應商名/加工費）
-  // 偵測：附件含 quote-QUO-XXX.pdf → 認定是寄客戶
-  const isCustomerQuoteEmail = Array.isArray(attachments) && attachments.some(a => {
+  // 偵測客戶報價 — 任一條件成立都算（多層保險）：
+  //   1. attachments 已含 quote-QUO-XXX.pdf
+  //   2. subject 含「報價單」/「Quote」/「Quotation」
+  //   3. subject 含 QUO-YYYY-NNNN 訂單編號
+  const subjectLooksLikeCustomerQuote = subject && /報價單|Quote\b|Quotation|QUO-\d{4}-\d{4}/i.test(subject);
+  const attachmentLooksLikeCustomerQuote = Array.isArray(attachments) && attachments.some(a => {
     const p = (typeof a === 'string' ? a : a?.path) || '';
     return /quote-QUO-\d{4}-\d{4}\.pdf$/.test(p);
   });
+  const isCustomerQuoteEmail = subjectLooksLikeCustomerQuote || attachmentLooksLikeCustomerQuote;
+
+  // ⚡ 自動附加報價單 PDF（agent 漏帶 attachments 防呆）
+  // 偵測：subject 像客戶報價 + 沒帶 attachments → 從 order 拉 final_quote_pdf_path
+  if (subjectLooksLikeCustomerQuote && (!Array.isArray(attachments) || attachments.length === 0)) {
+    try {
+      const fsLocal = require('fs');
+      const pathLocal = require('path');
+      const { findOrdersDir } = require('../_lib/order_writeback');
+      const ORDERS_DIR = findOrdersDir();
+
+      let pdfPath = null;
+      // 1. 從 subject 抓 QUO-XXXX-XXXX
+      const m = subject.match(/QUO-\d{4}-\d{4}/);
+      if (m) {
+        const orderPath = pathLocal.join(ORDERS_DIR, `${m[0]}.json`);
+        if (fsLocal.existsSync(orderPath)) {
+          const ord = JSON.parse(fsLocal.readFileSync(orderPath, 'utf8'));
+          if (ord?.final_quote_pdf_path && fsLocal.existsSync(ord.final_quote_pdf_path)) {
+            pdfPath = ord.final_quote_pdf_path;
+          }
+        }
+      }
+      // 2. fallback：找最新 order 有 final_quote_pdf_path
+      if (!pdfPath && fsLocal.existsSync(ORDERS_DIR)) {
+        const files = fsLocal.readdirSync(ORDERS_DIR)
+          .filter(f => /^QUO-\d{4}-\d{4}\.json$/.test(f))
+          .sort().reverse();
+        for (const f of files) {
+          try {
+            const ord = JSON.parse(fsLocal.readFileSync(pathLocal.join(ORDERS_DIR, f), 'utf8'));
+            if (ord?.final_quote_pdf_path && fsLocal.existsSync(ord.final_quote_pdf_path)) {
+              pdfPath = ord.final_quote_pdf_path;
+              break;
+            }
+          } catch {}
+        }
+      }
+      if (pdfPath) {
+        attachments = [{ path: pdfPath, filename: 'quote.pdf' }];
+        input.attachments = attachments;
+        console.error(`[send_email] 偵測到客戶報價 email 但漏帶 attachments — 自動附加 ${pdfPath}`);
+      } else {
+        console.error(`[send_email] ⚠️ 客戶報價 email 找不到 PDF`);
+      }
+    } catch (e) {
+      console.error(`[send_email] auto-attach quote PDF 失敗: ${e.message}`);
+    }
+  }
   if (isCustomerQuoteEmail && typeof body === 'string') {
     const SECRET_PATTERNS = [
       // 任何金額（單價/總價/任意 NT$ 行）— 客戶開 PDF 才看得到
@@ -349,9 +402,18 @@ async function main() {
       // 供應商名 + 加工費
       { pat: /^.*(表面處理|surface\s+treatment)[:：][^\n]*單件加工費[^\n]*$/gim, name: '供應商加工費' },
       { pat: /^.*(表面處理|surface\s+treatment)[:：].*(大同|全鋼|順興|SUP-\d+)[^\n]*$/gim, name: '供應商名稱' },
+      // 任何 supplier 名單行
+      { pat: /^.*(大同精密表面|全鋼表處|順興電鍍工業)[^\n]*$/gim, name: '供應商名出現' },
+      { pat: /^.*SUP-\d{3}[^\n]*$/gim, name: 'SUP-ID 出現' },
       // 內部成本拆解
       { pat: /^.*(內部成本|cost\s+breakdown|direct\s+cost)[:：][^\n]*$/gim, name: '內部成本' },
-      { pat: /^.*overhead[:：][^\n]*\d+%[^\n]*$/gim, name: 'overhead %' }
+      { pat: /^.*overhead[:：][^\n]*\d+%[^\n]*$/gim, name: 'overhead %' },
+      // 「達標 / 客戶要 N 天」這類內部用語
+      { pat: /^.*最快交期[:：][^\n]*$/gim, name: '最快交期行' },
+      { pat: /^.*客戶要\s*\d+\s*天[^\n]*$/gim, name: '客戶要 X 天' },
+      { pat: /^.*\b(達標|gap)\b[^\n]*$/gim, name: '達標 / gap 行' },
+      // 「報價摘要」開頭 — body 不該有摘要、客戶要看自己開 PDF
+      { pat: /^.*報價摘要[:：]?[^\n]*$/gim, name: '報價摘要 header' }
     ];
     const redacted = [];
     for (const { pat, name } of SECRET_PATTERNS) {
