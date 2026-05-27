@@ -1625,6 +1625,7 @@ const STAGE_ORDER = ['inbox', 'engineer', 'history', 'planner', 'supplier', 'sys
 
 let _currentScene = null;     // 避免重複動畫
 let _lastSceneSkillId = null; // 偵測新 tool call
+let _shownStageIdx = -1;       // 目前顯示到第幾個 stage（一次只推一格）
 
 function hideAllScenes() {
   document.getElementById('supplierView')?.classList.remove('show');
@@ -1938,7 +1939,18 @@ async function refreshLiveScenes() {
         }
       }
     }
-    const sceneName = maxStageIdx >= 0 ? STAGE_ORDER[maxStageIdx] : _currentScene;
+
+    // ⚡ 動畫節奏：scene **一次只推一格**，agent 跑太快也讓觀眾看到每個階段
+    // 每次 refresh 至多前進 1 stage；走到 target 才停
+    let displayStageIdx = _shownStageIdx;
+    if (maxStageIdx > _shownStageIdx) {
+      displayStageIdx = _shownStageIdx + 1;
+      _shownStageIdx = displayStageIdx;
+    } else if (maxStageIdx < _shownStageIdx && maxStageIdx >= 0) {
+      // 不倒退（譬如 reset 後從頭來才允許 reset _shownStageIdx）
+      displayStageIdx = _shownStageIdx;
+    }
+    const sceneName = displayStageIdx >= 0 ? STAGE_ORDER[displayStageIdx] : _currentScene;
 
     // 渲染（即使 scene 沒變，內容可能要 refresh）
     renderInboxScene(_latestInbox, _latestOrder);
@@ -1962,7 +1974,7 @@ function formatLocalTime(iso) {
 }
 
 refreshLiveScenes();
-setInterval(refreshLiveScenes, 4000);   // scenes 更頻繁 — 4s 反映更即時
+setInterval(refreshLiveScenes, 2500);   // 2.5s 推一格 — 6 個 stage 全跑完 ~15s，剛好讓觀眾看完每個階段
 
 // ─── Reset Demo (POST /api/reset-demo) ───
 // 清乾淨 sandbox sessions / orders / inbox / line pending — 準備跑全新 e2e demo
@@ -1990,6 +2002,7 @@ async function resetDemoState() {
       // 立刻 refresh 所有 panel + 把 scene 退回 chat 預設畫面
       hideAllScenes();
       _currentScene = null;
+      _shownStageIdx = -1;        // 從頭來
       _latestOrder = null;
       _latestInbox = null;
       setTimeout(() => {

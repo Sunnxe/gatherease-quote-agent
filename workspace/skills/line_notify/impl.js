@@ -214,7 +214,20 @@ async function main() {
   let { hold_id, gate, summary, options, order_id, extra } = input;
 
   if (!gate) throw new Error('gate required');
-  if (!Array.isArray(options) || options.length === 0) throw new Error('options must be non-empty array');
+
+  // 防呆：agent 沒帶 options → 依 gate 給 default options
+  // 這樣 agent 只要說「推 LINE gate-pre-rfq」即可，不用每次重打 options
+  if (!Array.isArray(options) || options.length === 0) {
+    const DEFAULT_OPTIONS = {
+      'gate-1-secret-probe':        ['仍正常報價（不答機密）', '暫停這張單', '回信婉拒'],
+      'gate-pre-rfq':               ['發詢價', '修改名單', '取消'],
+      'gate-2-tradeoff-decision':   ['選 AI 推薦', '改選次優', '跟客戶談'],   // 通常會被 compare_suppliers slim 覆寫
+      'gate-3-final-quote-signoff': ['簽核並寄出', '修改價格', '取消'],
+      'gate-4-blueprint-egress':    ['同意外送', '加密後送', '取消']
+    };
+    options = DEFAULT_OPTIONS[gate] || ['確認', '取消'];
+    console.error(`[line_notify] options 沒帶、依 gate=${gate} 自動填: ${JSON.stringify(options)}`);
+  }
 
   // 自動從 order JSON 構 rich summary（避免 agent 漏欄位 / format 出包）
   // 規則：有 order_id → 一律用 buildSummaryFromOrder()；agent 傳的 summary 只當 fallback
