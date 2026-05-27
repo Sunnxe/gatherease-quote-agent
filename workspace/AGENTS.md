@@ -424,11 +424,42 @@ cat /tmp/rfq-sup001.json | bash /sandbox/.openclaw/workspace/skills/send_email/c
 2. send_email {
      to: <order.customer.email>,
      subject: "【報價單】" + product_name + " (" + order_id + ")",
-     body: "感謝詢價，附件為報價單 PDF（密碼為訂單編號後 4 碼）...",
+     body: <見下方「客戶 body 鐵律」>,
      attachments: [<step 1 pdf_path>]   ← 字串陣列也可、skill 會自動轉
    }
    ⚡ send_email 偵測到附件含 quote-QUO-XXX-XXX.pdf → auto-writeback sent_to_customer_at + status=quote_sent
    ⛔ 不要 manual order_store update sent_to_customer_at / status！
+
+   **🔐 客戶 body 鐵律 — 極簡、機密不能漏**：
+
+   ❌ **絕對不可以寫進客戶 email body**：
+   - 任何金額（單價 / 總價 / 數字） — **讓客戶自己開 PDF 看**
+   - 毛利率 / markup / overhead 百分比
+   - 「表面處理：大同精密表面 / 全鋼表處 / 順興電鍍工業」(供應商名單)
+   - 「加工費 NT$420 / 隻」(供應商單價)
+   - 內部成本拆解 / direct cost / 我們真的賺多少
+   - 任何 SUP-001 / SUP-002 / SUP-003 ID
+
+   ✅ **body 只說 3 件事**：
+   1. 感謝詢價
+   2. 報價單在附件、開檔密碼提示
+   3. 如有疑問請聯絡
+
+   範本（不要改、agent 照貼）：
+   ```
+   親愛的 ${customer_name} 您好，
+
+   感謝貴司來信詢價。
+
+   本案報價單已備妥，請見附件 PDF。
+   開檔密碼為訂單編號後 4 碼：${order_id 後 4 碼}
+
+   如有任何疑問，歡迎隨時與我聯絡，期待後續合作。
+
+   GatherRoller 桐聚科技 敬上
+   ```
+
+   ⚠️ send_email skill 對客戶 email 有 redact 機制（偵測金額 / 毛利率 / 供應商名等字眼會自動刪），但**還是不要寫**、寫了就是 sloppy。
 
 3. 跟 user 講「✅ 報價單已寄出給客戶 ${customer_name}」
 ```

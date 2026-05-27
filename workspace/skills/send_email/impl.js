@@ -327,6 +327,47 @@ async function main() {
     input.subject = subject;
   }
 
+  // 🔐 機密過濾：寄報價單給客戶時，body 不能漏內部資訊（毛利率/供應商名/加工費）
+  // 偵測：附件含 quote-QUO-XXX.pdf → 認定是寄客戶
+  const isCustomerQuoteEmail = Array.isArray(attachments) && attachments.some(a => {
+    const p = (typeof a === 'string' ? a : a?.path) || '';
+    return /quote-QUO-\d{4}-\d{4}\.pdf$/.test(p);
+  });
+  if (isCustomerQuoteEmail && typeof body === 'string') {
+    const SECRET_PATTERNS = [
+      // 任何金額（單價/總價/任意 NT$ 行）— 客戶開 PDF 才看得到
+      { pat: /^.*建議?單價[:：][^\n]*$/gim, name: '單價行' },
+      { pat: /^.*單價[:：]\s*NT?\$?[^\n]*$/gim, name: '單價行' },
+      { pat: /^.*總價[:：][^\n]*$/gim, name: '總價行' },
+      { pat: /^.*合計[:：][^\n]*\d[^\n]*$/gim, name: '合計行' },
+      { pat: /^.*數量[:：]\s*\d+[^\n]*$/gim, name: '數量行' },
+      { pat: /^.*Total[:：][^\n]*$/gim, name: 'Total 行' },
+      { pat: /^.*Unit\s*Price[:：][^\n]*$/gim, name: 'Unit Price 行' },
+      // 毛利率 / markup
+      { pat: /^.*毛利率?[:：][^\n]*$/gim, name: '毛利率' },
+      { pat: /^.*markup[^\n]*$/gim, name: 'markup' },
+      // 供應商名 + 加工費
+      { pat: /^.*(表面處理|surface\s+treatment)[:：][^\n]*單件加工費[^\n]*$/gim, name: '供應商加工費' },
+      { pat: /^.*(表面處理|surface\s+treatment)[:：].*(大同|全鋼|順興|SUP-\d+)[^\n]*$/gim, name: '供應商名稱' },
+      // 內部成本拆解
+      { pat: /^.*(內部成本|cost\s+breakdown|direct\s+cost)[:：][^\n]*$/gim, name: '內部成本' },
+      { pat: /^.*overhead[:：][^\n]*\d+%[^\n]*$/gim, name: 'overhead %' }
+    ];
+    const redacted = [];
+    for (const { pat, name } of SECRET_PATTERNS) {
+      if (pat.test(body)) {
+        body = body.replace(pat, '');
+        redacted.push(name);
+      }
+    }
+    // 清掉多餘空行
+    body = body.replace(/\n{3,}/g, '\n\n').trim();
+    input.body = body;
+    if (redacted.length > 0) {
+      console.error(`[send_email] 🔐 客戶報價 body 偵測到不該寫的內容、已自動 redact：${redacted.join(', ')}`);
+    }
+  }
+
   // 防呆：attachments 接受兩種格式：
   //   字串陣列  ["/path/to/file.pdf"]
   //   物件陣列  [{"path":"/path/to/file.pdf", "filename":"file.pdf"}]
