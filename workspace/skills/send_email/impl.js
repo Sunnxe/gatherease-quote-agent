@@ -327,6 +327,26 @@ async function main() {
     input.subject = subject;
   }
 
+  // 防呆：attachments 接受兩種格式：
+  //   字串陣列  ["/path/to/file.pdf"]
+  //   物件陣列  [{"path":"/path/to/file.pdf", "filename":"file.pdf"}]
+  // 都轉成物件陣列再往下走。
+  if (Array.isArray(attachments)) {
+    attachments = attachments.map(a => {
+      if (typeof a === 'string') {
+        const filename = a.split('/').pop() || 'attachment';
+        return { path: a, filename };
+      }
+      // 物件 — 確保有 filename 欄（沒給就從 path 抓 basename）
+      if (a && typeof a === 'object' && a.path) {
+        if (!a.filename) a.filename = a.path.split('/').pop() || 'attachment';
+        return a;
+      }
+      return null;
+    }).filter(Boolean);
+    input.attachments = attachments;   // 同步給 writeOutbox 用（bridge 才看得到正確 path）
+  }
+
   // ── BRIDGE_MODE=outbox: 寫 JSON 給 host email-bridge.js 監看 ──
   const bridgeMode = detectBridgeMode();
   if (bridgeMode === 'outbox') {
