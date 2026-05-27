@@ -20,6 +20,22 @@ const SUPPLIERS_FILE = '/sandbox/.openclaw/workspace/data/suppliers.json';
 
 const LINE_PUSH_URL = 'https://api.line.me/v2/bot/message/push';
 
+// 短 gate 名 alias → 完整 gate 名
+const GATE_ALIASES = {
+  'gate-1':            'gate-1-secret-probe',
+  'gate-2':            'gate-2-tradeoff-decision',
+  'gate-3':            'gate-3-final-quote-signoff',
+  'gate-4':            'gate-4-blueprint-egress',
+  'gate-pre':          'gate-pre-rfq',
+  'gate-pre-rfq':      'gate-pre-rfq',
+  'gate-final':        'gate-3-final-quote-signoff',
+  'gate-signoff':      'gate-3-final-quote-signoff',
+  'gate-tradeoff':     'gate-2-tradeoff-decision'
+};
+function normalizeGate(gate) {
+  return GATE_ALIASES[gate] || gate;
+}
+
 // ─── 自動從 order JSON 構 summary（避免 agent 自己組搞錯數字 / 格式 / 廠商名）───
 function buildSummaryFromOrder(orderId, gate) {
   try {
@@ -214,6 +230,8 @@ async function main() {
   let { hold_id, gate, summary, options, order_id, extra } = input;
 
   if (!gate) throw new Error('gate required');
+  // 接受短 gate 名（gate-2 → gate-2-tradeoff-decision 等）
+  gate = normalizeGate(gate);
 
   // 防呆：agent 沒帶 options → 依 gate 給 default options
   // 這樣 agent 只要說「推 LINE gate-pre-rfq」即可，不用每次重打 options
@@ -231,11 +249,43 @@ async function main() {
 
   // 自動從 order JSON 構 rich summary（避免 agent 漏欄位 / format 出包）
   // 規則：有 order_id → 一律用 buildSummaryFromOrder()；agent 傳的 summary 只當 fallback
+  let autoOptions = null, autoExtra = null;
   if (order_id) {
     const auto = buildSummaryFromOrder(order_id, gate);
     if (auto) {
       summary = auto;   // ← 強制覆蓋 agent 的 summary，保證資料對、格式對
     }
+    // gate-2 多廠商比價 — 自動從 comparison 拉 ranked options + strategy extra
+    if (gate === 'gate-2-tradeoff-decision') {
+      try {
+        const orderPath = path.join(ORDERS_DIR, `${order_id}.json`);
+        if (fsSync.existsSync(orderPath)) {
+          const order = JSON.parse(fsSync.readFileSync(orderPath, 'utf8'));
+          const cmp = order.comparison || {};
+          const ranked = cmp.ranked || [];
+          const strat = cmp.strategies?.[0];
+          if (ranked.length >= 2) {
+            autoOptions = [
+              ranked[0] && !ranked[0].disqualified ? `選 ${ranked[0].name}（AI 推薦）` : '取消',
+              ranked[1] ? `改選 ${ranked[1].name}` : '取消',
+              strat ? strat.short_label : '取消'
+            ];
+            autoExtra = {
+              ranked_supplier_ids: ranked.slice(0, 2).map(r => r.supplier_id),
+              strategy: strat || null
+            };
+          }
+        }
+      } catch {}
+    }
+  }
+
+  // 套自動拉的 options/extra（agent 沒帶就用 auto）
+  if (autoOptions && (!Array.isArray(options) || options.length < 2)) {
+    options = autoOptions;
+  }
+  if (autoExtra && (!extra || Object.keys(extra).length === 0)) {
+    extra = autoExtra;
   }
 
   if (!summary) throw new Error('summary required (沒提供 order_id 也沒給 summary)');
